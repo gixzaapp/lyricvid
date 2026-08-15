@@ -1,18 +1,31 @@
 {
   "expo": {
-    "name": "lyricvid",
+    "name": "AI LyricVid",
     "slug": "lyricvid",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "lyricvid",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "dark",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.cypherlabs.lyricvid",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "AI LyricVid needs access to your videos so you can overlay lyrics.",
+        "NSPhotoLibraryAddUsageDescription": "AI LyricVid saves the finished lyric video to your library."
+      },
+      "supportsTablet": true
     },
     "android": {
+      "package": "com.cypherlabs.lyricvid",
+      "permissions": [
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_AUDIO",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_EXTERNAL_STORAGE"
+      ],
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#07070B",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -28,15 +41,48 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#07070B",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
+        }
+      ],
+      "expo-video",
+      "expo-audio",
+      [
+        "expo-file-system",
+        {
+          "enableFileSharing": true
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "AI LyricVid needs access to your videos so you can overlay lyrics."
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "AI LyricVid needs access to your videos so you can overlay lyrics.",
+          "savePhotosPermission": "AI LyricVid saves the finished lyric video to your library.",
+          "isAccessMediaLocationEnabled": true,
+          "granularPermissions": ["video", "audio"]
+        }
+      ],
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-3940256099942544~3347511713",
+          "iosAppId": "ca-app-pub-3940256099942544~1458002511"
         }
       ]
     ],
     "experiments": {
-      "typedRoutes": true,
-      "reactCompiler": true
+      "typedRoutes": true
     }
+  },
+  "react-native-google-mobile-ads": {
+    "android_app_id": "ca-app-pub-3940256099942544~3347511713",
+    "ios_app_id": "ca-app-pub-3940256099942544~1458002511"
   }
 }

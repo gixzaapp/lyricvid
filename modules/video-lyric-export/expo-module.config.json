@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["VideoLyricExportModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.videolyricexport.VideoLyricExportModule"]
+  }
+}
