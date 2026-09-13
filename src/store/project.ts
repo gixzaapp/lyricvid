@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-import { createLineId, lyricsFromTrack } from '@/lib/lyrics';
+import { createLineId, lyricsFromTrack, splitLineAtWord } from '@/lib/lyrics';
 import type { LyricLine, LrclibTrack, SubtitleStyle } from '@/types';
 
 const defaultStyle: SubtitleStyle = {
@@ -40,10 +40,16 @@ type ProjectState = {
   updateLine: (id: string, patch: Partial<Pick<LyricLine, 'text' | 'timestamp'>>) => void;
   addLine: (timestamp: number) => void;
   removeLine: (id: string) => void;
+  startFromLine: (id: string) => void;
+  splitLine: (id: string, afterCount: number) => void;
   setOffset: (offset: number) => void;
   setStyle: (patch: Partial<SubtitleStyle>) => void;
   setPosition: (x: number, y: number) => void;
   timingDuration: () => number;
+  pendingSongDetect: boolean;
+  setPendingSongDetect: (value: boolean) => void;
+  stageWidth: number;
+  setStageWidth: (width: number) => void;
   reset: () => void;
 };
 
@@ -61,6 +67,8 @@ const initial = {
   lyricsWarning: null as string | null,
   offset: 0,
   style: defaultStyle,
+  pendingSongDetect: false,
+  stageWidth: 0,
 };
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
@@ -99,8 +107,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       ...(keep ? { audioUri: null, audioName: null, audioDuration: 0 } : {}),
     }),
   applyTrack: (track) => {
-    const duration = get().timingDuration();
-    const parsed = lyricsFromTrack(track, duration);
+    const songDuration = track.duration > 0 ? track.duration : get().timingDuration();
+    const parsed = lyricsFromTrack(track, songDuration);
     set({
       track,
       lyrics: parsed.lyrics,
@@ -138,12 +146,46 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set((state) => ({
       lyrics: state.lyrics.filter((line) => line.id !== id),
     })),
+  startFromLine: (id) =>
+    set((state) => {
+      const index = state.lyrics.findIndex((line) => line.id === id);
+      if (index < 0) return {};
+      const origin = state.lyrics[index].timestamp;
+      return {
+        lyrics: state.lyrics.slice(index).map((line) => ({
+          ...line,
+          timestamp: Math.max(0, line.timestamp - origin),
+          words: line.words?.map((word) => ({
+            ...word,
+            timestamp: Math.max(0, word.timestamp - origin),
+          })),
+        })),
+      };
+    }),
+  splitLine: (id, afterCount) =>
+    set((state) => {
+      const index = state.lyrics.findIndex((line) => line.id === id);
+      if (index < 0) return {};
+      const line = state.lyrics[index];
+      const nextTimestamp = state.lyrics[index + 1]?.timestamp ?? line.timestamp + 4;
+      const split = splitLineAtWord(line, afterCount, nextTimestamp);
+      if (!split) return {};
+      const lyrics = [...state.lyrics];
+      lyrics.splice(index, 1, split.first, split.second);
+      return { lyrics };
+    }),
   setOffset: (offset) => set({ offset }),
   setStyle: (patch) => set((state) => ({ style: { ...state.style, ...patch } })),
   setPosition: (x, y) => set((state) => ({ style: { ...state.style, x, y } })),
   timingDuration: () => {
     const state = get();
     return state.videoDuration > 0 ? state.videoDuration : 0;
+  },
+  setPendingSongDetect: (value) => set({ pendingSongDetect: value }),
+  setStageWidth: (width) => {
+    if (width > 0) {
+      set({ stageWidth: width });
+    }
   },
   reset: () => set({ ...initial, style: { ...defaultStyle } }),
 }));

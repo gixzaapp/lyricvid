@@ -1,5 +1,6 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
   Platform,
   PanResponder,
   StyleSheet,
@@ -8,23 +9,48 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 
+import { highlightRangeInText } from '@/lib/lyrics';
 import { clamp } from '@/lib/time';
-import { colors, fontFamilyFor } from '@/theme';
+import { colors, lyricFontStyle } from '@/theme';
 import type { LyricWord, SubtitleStyle } from '@/types';
 
 type Props = {
+  text?: string;
   words: LyricWord[];
+  currentIndex?: number;
+  lineKey: string;
   placeholder?: string;
   styleConfig: SubtitleStyle;
   onPositionChange: (x: number, y: number) => void;
 };
 
-export function LyricOverlay({ words, placeholder, styleConfig, onPositionChange }: Props) {
+export function LyricOverlay({
+  text = '',
+  words,
+  currentIndex = -1,
+  lineKey,
+  placeholder,
+  styleConfig,
+  onPositionChange,
+}: Props) {
   const box = useRef({ w: 0, h: 0 });
   const start = useRef({ x: styleConfig.x, y: styleConfig.y });
   const styleRef = useRef(styleConfig);
   styleRef.current = styleConfig;
+  const wordsRef = useRef(words);
+  const textRef = useRef(text);
+  const placeholderRef = useRef(placeholder);
+  const shownKey = useRef<string | null>(null);
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(8)).current;
   const [size, setSize] = useState({ w: 0, h: 0 });
+  const [stageSize, setStageSize] = useState({ w: 0, h: 0 });
+  const [paintedWords, setPaintedWords] = useState(words);
+  const [paintedText, setPaintedText] = useState(text);
+  const [paintedPlaceholder, setPaintedPlaceholder] = useState(placeholder);
+  wordsRef.current = words;
+  textRef.current = text;
+  placeholderRef.current = placeholder;
 
   const pan = useMemo(
     () =>
@@ -43,22 +69,40 @@ export function LyricOverlay({ words, placeholder, styleConfig, onPositionChange
     [onPositionChange],
   );
 
+  useEffect(() => {
+    if (shownKey.current === lineKey) {
+      setPaintedWords(words);
+      setPaintedText(text);
+    }
+  }, [lineKey, text, words]);
+
+  useEffect(() => {
+    shownKey.current = lineKey;
+    setPaintedWords(wordsRef.current);
+    setPaintedText(textRef.current);
+    setPaintedPlaceholder(placeholderRef.current);
+    opacity.stopAnimation();
+    translateY.stopAnimation();
+    const show = lineKey !== 'hidden';
+    opacity.setValue(show ? 1 : 0);
+    translateY.setValue(0);
+  }, [lineKey, opacity, translateY]);
+
   const onStageLayout = (event: LayoutChangeEvent) => {
-    box.current = {
+    const next = {
       w: event.nativeEvent.layout.width,
       h: event.nativeEvent.layout.height,
     };
+    box.current = next;
+    setStageSize(next);
   };
 
-  const resolvedFont = fontFamilyFor(styleConfig.fontFamily);
+  const displayText = paintedText || paintedPlaceholder || '';
+  const highlight = highlightRangeInText(paintedText, paintedWords, currentIndex);
   const wordStyle = {
     color: styleConfig.color,
     fontSize: styleConfig.fontSize,
-    ...(Platform.OS === 'ios'
-      ? resolvedFont.ios
-        ? { fontFamily: resolvedFont.ios }
-        : {}
-      : { fontFamily: resolvedFont.android }),
+    ...lyricFontStyle(styleConfig.fontFamily, displayText, Platform.OS === 'ios' ? 'ios' : 'android'),
     fontWeight: styleConfig.bold ? '800' : '500',
     fontStyle: styleConfig.italic ? 'italic' : 'normal',
     textShadowColor: styleConfig.outline ? 'rgba(0,0,0,0.85)' : 'transparent',
@@ -71,7 +115,7 @@ export function LyricOverlay({ words, placeholder, styleConfig, onPositionChange
 
   return (
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill} onLayout={onStageLayout}>
-      <View
+      <Animated.View
         {...pan.panHandlers}
         onLayout={(event) => {
           setSize({
@@ -86,36 +130,33 @@ export function LyricOverlay({ words, placeholder, styleConfig, onPositionChange
             top: `${styleConfig.y}%`,
             marginLeft: -size.w / 2,
             marginTop: -size.h / 2,
+            maxWidth: stageSize.w > 0 ? stageSize.w * 0.92 : '92%',
             backgroundColor: styleConfig.backgroundColor ?? 'transparent',
             alignItems,
+            opacity,
+            transform: [{ translateY }],
           },
         ]}>
-        {words.length ? (
-          <View
-            style={[
-              styles.row,
-              { justifyContent: alignItems === 'flex-start' ? 'flex-start' : alignItems === 'flex-end' ? 'flex-end' : 'center' },
-            ]}>
-            {words.map((word, index) => {
-              const current = index === words.length - 1;
-              return (
-                <Text
-                  key={`${word.timestamp}-${word.text}-${index}`}
-                  style={[
-                    wordStyle,
-                    styles.word,
-                    current && styles.currentWord,
-                  ]}>
-                  {word.text}
-                  {index < words.length - 1 ? ' ' : ''}
+        {paintedText ? (
+          <Text style={[wordStyle, styles.line, { textAlign: styleConfig.align }]}>
+            {highlight.end > highlight.start ? (
+              <>
+                <Text style={styles.word}>{paintedText.slice(0, highlight.start)}</Text>
+                <Text style={[styles.word, styles.currentWord]}>
+                  {paintedText.slice(highlight.start, highlight.end)}
                 </Text>
-              );
-            })}
-          </View>
-        ) : placeholder ? (
-          <Text style={[wordStyle, { textAlign: styleConfig.align, opacity: 0.7 }]}>{placeholder}</Text>
+                <Text style={styles.word}>{paintedText.slice(highlight.end)}</Text>
+              </>
+            ) : (
+              <Text style={styles.word}>{paintedText}</Text>
+            )}
+          </Text>
+        ) : paintedPlaceholder ? (
+          <Text style={[wordStyle, styles.line, { textAlign: styleConfig.align, opacity: 0.7 }]}>
+            {paintedPlaceholder}
+          </Text>
         ) : null}
-      </View>
+      </Animated.View>
     </View>
   );
 }
@@ -123,15 +164,12 @@ export function LyricOverlay({ words, placeholder, styleConfig, onPositionChange
 const styles = StyleSheet.create({
   lyricBox: {
     position: 'absolute',
-    maxWidth: '88%',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 10,
   },
-  row: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    maxWidth: '100%',
+  line: {
+    flexShrink: 1,
   },
   word: {
     opacity: 0.72,

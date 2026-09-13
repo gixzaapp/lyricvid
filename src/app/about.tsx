@@ -1,15 +1,45 @@
 import { Ionicons } from '@expo/vector-icons';
-import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Button } from '@/components/ui';
+import {
+  checkAppUpdate,
+  getInstalledVersion,
+  openStoreListing,
+} from '@/lib/appUpdate';
 import { colors } from '@/theme';
 
-const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0';
+const APP_VERSION = getInstalledVersion();
 
 export default function AboutScreen() {
   const router = useRouter();
+  const [checking, setChecking] = useState(false);
+
+  const checkForUpdate = async () => {
+    try {
+      setChecking(true);
+      const update = await checkAppUpdate({ ignoreDismissed: true });
+      if (!update) {
+        Alert.alert('Up to date', `You are on version ${APP_VERSION}.`);
+        return;
+      }
+      Alert.alert(
+        update.required ? 'Update required' : 'Update available',
+        `${update.message}\n\nYou have ${update.installed}. Latest is ${update.latest}.`,
+        [
+          ...(update.required ? [] : [{ text: 'Later', style: 'cancel' as const }]),
+          { text: 'Update', onPress: () => void openStoreListing(update.storeUrl) },
+        ],
+      );
+    } catch (error) {
+      Alert.alert('Could not check', error instanceof Error ? error.message : 'Unknown error');
+    } finally {
+      setChecking(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
@@ -29,12 +59,22 @@ export default function AboutScreen() {
           then export a finished MP4 to your gallery.
         </Text>
         <Text style={styles.copy}>
-          Everything stays on this device. No account is required.
+          Editing and export stay on this device. Detect song sends a short audio clip to AudD to
+          identify the track. No account is required.
         </Text>
+        <Button
+          label={checking ? 'Checking…' : 'Check for update'}
+          onPress={() => void checkForUpdate()}
+          disabled={checking}
+        />
         <View style={styles.credit}>
           <Text style={styles.creditLabel}>Lyrics courtesy of</Text>
           <Pressable onPress={() => Linking.openURL('https://lrclib.net')}>
             <Text style={styles.creditLink}>LRCLIB</Text>
+          </Pressable>
+          <Text style={[styles.creditLabel, { marginTop: 10 }]}>Song detection by</Text>
+          <Pressable onPress={() => Linking.openURL('https://audd.io')}>
+            <Text style={styles.creditLink}>AudD</Text>
           </Pressable>
         </View>
       </View>

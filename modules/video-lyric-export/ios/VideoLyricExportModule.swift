@@ -35,6 +35,17 @@ public class VideoLyricExportModule: Module {
     Name("VideoLyricExport")
     Events("onExportProgress")
 
+    AsyncFunction("extractAudioClip") { (sourceUri: String, startSeconds: Double, durationSeconds: Double, promise: Promise) in
+      DispatchQueue.global(qos: .userInitiated).async {
+        do {
+          let uri = try self.extractAudioClip(sourceUri, startSeconds: startSeconds, durationSeconds: durationSeconds)
+          promise.resolve(uri)
+        } catch {
+          promise.reject("EXTRACT_FAILED", error.localizedDescription)
+        }
+      }
+    }
+
     AsyncFunction("exportVideo") { (options: ExportOptions, promise: Promise) in
       DispatchQueue.global(qos: .userInitiated).async {
         do {
@@ -87,22 +98,29 @@ public class VideoLyricExportModule: Module {
     parent.addSublayer(videoLayer)
 
     let previewWidth = options.previewWidth > 1 ? options.previewWidth : 360
-    let textScale = max(width / previewWidth, 0.5)
+    let textScale = max(width / previewWidth, 0.75)
     let fontSize = options.fontSize * textScale
-    let maxWidth = width * 0.88
-    let boxHeight = CGFloat(fontSize) * 3.2
+    let maxWidth = width * 0.92
     let center = CGPoint(x: width * options.x / 100, y: height * (1 - options.y / 100))
 
     for cue in options.cues {
+      let styled = attributed(cue, options: options, fontSize: fontSize, maxWidth: maxWidth)
+      let bounds = styled.boundingRect(
+        with: CGSize(width: maxWidth, height: .greatestFiniteMagnitude),
+        options: [.usesLineFragmentOrigin, .usesFontLeading],
+        context: nil
+      )
+      let boxWidth = min(maxWidth, max(ceil(bounds.width) + 20, 8))
+      let boxHeight = max(ceil(bounds.height) + 12, CGFloat(fontSize) + 12)
       let layer = CATextLayer()
       layer.contentsScale = 2
       layer.alignmentMode = alignment(options.align)
       layer.isWrapped = true
-      layer.string = attributed(cue, options: options, fontSize: fontSize)
+      layer.string = styled
       layer.frame = CGRect(
-        x: center.x - maxWidth / 2,
+        x: center.x - boxWidth / 2,
         y: center.y - boxHeight / 2,
-        width: maxWidth,
+        width: boxWidth,
         height: boxHeight
       )
       if let background = options.backgroundColor, let color = cssColor(background) {
@@ -112,8 +130,8 @@ public class VideoLyricExportModule: Module {
       layer.opacity = 0
       let visible = max(cue.end - cue.start, 0.08)
       let animation = CAKeyframeAnimation(keyPath: "opacity")
-      animation.values = [0, 1, 1, 0]
-      animation.keyTimes = [0, 0.02, 0.98, 1]
+      animation.values = [1, 1, 0]
+      animation.keyTimes = [0, 0.999, 1]
       animation.beginTime = AVCoreAnimationBeginTimeAtZero + cue.start
       animation.duration = visible
       animation.fillMode = .forwards
@@ -179,20 +197,24 @@ public class VideoLyricExportModule: Module {
     return outputURL.absoluteString
   }
 
-  private func attributed(_ cue: LyricCue, options: ExportOptions, fontSize: Double) -> NSAttributedString {
+  private func attributed(_ cue: LyricCue, options: ExportOptions, fontSize: Double, maxWidth _: CGFloat) -> NSAttributedString {
     let text = cue.text as NSString
     let result = NSMutableAttributedString(string: cue.text)
     var traits: UIFontDescriptor.SymbolicTraits = []
     if options.bold { traits.insert(.traitBold) }
     if options.italic { traits.insert(.traitItalic) }
-    let named = iosFontName(options.fontFamily)
+    let named = needsSystemFont(cue.text) ? nil : iosFontName(options.fontFamily)
     let base = named.flatMap { UIFont(name: $0, size: fontSize) } ?? UIFont.systemFont(ofSize: fontSize)
     let font = base.fontDescriptor.withSymbolicTraits(traits).map { UIFont(descriptor: $0, size: fontSize) } ?? base
-    let color = cssColor(options.color) ?? .white
+    let color = (cssColor(options.color) ?? .white).withAlphaComponent(0.72)
     let range = NSRange(location: 0, length: text.length)
+    let paragraph = NSMutableParagraphStyle()
+    paragraph.alignment = nsAlign(options.align)
+    paragraph.lineBreakMode = .byWordWrapping
     result.addAttributes([
       .font: font,
       .foregroundColor: color,
+      .paragraphStyle: paragraph,
     ], range: range)
     if options.outline {
       result.addAttributes([
@@ -212,15 +234,38 @@ public class VideoLyricExportModule: Module {
     return result
   }
 
+  private func needsSystemFont(_ text: String) -> Bool {
+    return text.unicodeScalars.contains { scalar in
+      let code = scalar.value
+      return (0x0590...0x05FF).contains(code) ||
+        (0x0600...0x06FF).contains(code) ||
+        (0x0750...0x077F).contains(code) ||
+        (0x08A0...0x08FF).contains(code) ||
+        (0x0900...0x0DFF).contains(code) ||
+        (0x0E00...0x0E7F).contains(code) ||
+        (0x0F00...0x0FFF).contains(code) ||
+        (0x1000...0x109F).contains(code) ||
+        (0x1100...0x11FF).contains(code) ||
+        (0x1200...0x137F).contains(code) ||
+        (0x1780...0x17FF).contains(code) ||
+        (0x3040...0x30FF).contains(code) ||
+        (0x3100...0x312F).contains(code) ||
+        (0x3400...0x9FFF).contains(code) ||
+        (0xA960...0xA97F).contains(code) ||
+        (0xAC00...0xD7AF).contains(code) ||
+        (0xF900...0xFAFF).contains(code)
+    }
+  }
+
   private func iosFontName(_ id: String) -> String? {
     switch id {
     case "serif": return "Georgia"
-    case "rounded": return "Avenir Next"
-    case "narrow": return "AvenirNextCondensed-DemiBold"
-    case "mono": return "Menlo"
+    case "condensed", "narrow", "poster": return "AvenirNextCondensed-DemiBold"
+    case "typewriter": return "AmericanTypewriter-Semibold"
+    case "mono": return "Menlo-Bold"
     case "script": return "Noteworthy-Bold"
-    case "poster": return "HelveticaNeue-CondensedBold"
-    case "light": return "HelveticaNeue-Light"
+    case "marker": return "MarkerFelt-Wide"
+    case "smallcaps": return "Copperplate-Bold"
     default: return nil
     }
   }
@@ -231,6 +276,50 @@ public class VideoLyricExportModule: Module {
     case "right": return .right
     default: return .center
     }
+  }
+
+  private func nsAlign(_ value: String) -> NSTextAlignment {
+    switch value {
+    case "left": return .left
+    case "right": return .right
+    default: return .center
+    }
+  }
+
+  private func extractAudioClip(_ sourceUri: String, startSeconds: Double, durationSeconds: Double) throws -> String {
+    let asset = AVURLAsset(url: url(from: sourceUri))
+    guard asset.tracks(withMediaType: .audio).first != nil else {
+      throw NSError(domain: "VideoLyricExport", code: 2, userInfo: [NSLocalizedDescriptionKey: "The selected media has no audio track."])
+    }
+
+    let assetDuration = CMTimeGetSeconds(asset.duration)
+    let start = max(0, min(startSeconds, max(0, assetDuration - 1)))
+    let length = min(max(durationSeconds, 1), max(1, assetDuration - start))
+    let timeRange = CMTimeRange(
+      start: CMTime(seconds: start, preferredTimescale: 600),
+      duration: CMTime(seconds: length, preferredTimescale: 600)
+    )
+
+    guard let session = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else {
+      throw NSError(domain: "VideoLyricExport", code: 3, userInfo: [NSLocalizedDescriptionKey: "Could not start audio extraction."])
+    }
+
+    let output = FileManager.default.temporaryDirectory.appendingPathComponent("lyricvid-detect-\(UUID().uuidString).m4a")
+    if FileManager.default.fileExists(atPath: output.path) {
+      try FileManager.default.removeItem(at: output)
+    }
+    session.outputURL = output
+    session.outputFileType = .m4a
+    session.timeRange = timeRange
+
+    let lock = DispatchSemaphore(value: 0)
+    session.exportAsynchronously { lock.signal() }
+    lock.wait()
+
+    if session.status != .completed {
+      throw session.error ?? NSError(domain: "VideoLyricExport", code: 4, userInfo: [NSLocalizedDescriptionKey: "Audio extraction failed."])
+    }
+    return output.absoluteString
   }
 
   private func url(from value: String) -> URL {
@@ -258,6 +347,14 @@ public class VideoLyricExportModule: Module {
     var hex = raw.replacingOccurrences(of: "#", with: "")
     if hex.count == 3 {
       hex = hex.map { "\($0)\($0)" }.joined()
+    }
+    if hex.count == 8, let int = Int(hex, radix: 16) {
+      return UIColor(
+        red: CGFloat((int >> 24) & 0xFF) / 255,
+        green: CGFloat((int >> 16) & 0xFF) / 255,
+        blue: CGFloat((int >> 8) & 0xFF) / 255,
+        alpha: CGFloat(int & 0xFF) / 255
+      )
     }
     guard hex.count == 6, let int = Int(hex, radix: 16) else { return nil }
     return UIColor(

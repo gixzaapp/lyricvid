@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppMenu } from '@/components/AppMenu';
 import { LandingBanner } from '@/components/LandingBanner';
+import { isAuddEnabled } from '@/lib/audd';
 import { pickFile, pickVideoFromLibrary } from '@/lib/media';
 import { useProjectStore } from '@/store/project';
 import { colors } from '@/theme';
@@ -14,6 +15,7 @@ import { colors } from '@/theme';
 export default function HomeScreen() {
   const router = useRouter();
   const setVideo = useProjectStore((s) => s.setVideo);
+  const setPendingSongDetect = useProjectStore((s) => s.setPendingSongDetect);
   const videoUri = useProjectStore((s) => s.videoUri);
   const videoName = useProjectStore((s) => s.videoName);
   const reset = useProjectStore((s) => s.reset);
@@ -26,6 +28,7 @@ export default function HomeScreen() {
       if (!picked) return;
       reset();
       setVideo(picked);
+      setPendingSongDetect(isAuddEnabled());
       router.push('/editor');
     } catch (error) {
       Alert.alert('Could not open video', error instanceof Error ? error.message : 'Unknown error');

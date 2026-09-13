@@ -1,31 +1,20 @@
 package expo.modules.videolyricexport
 
 import android.content.Context
-import android.graphics.Color
-import android.graphics.Typeface
+import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
+import android.media.MediaMuxer
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
-import android.text.Spannable
-import android.text.SpannableString
-import android.text.TextPaint
-import android.text.style.AbsoluteSizeSpan
-import android.text.style.BackgroundColorSpan
-import android.text.style.CharacterStyle
-import android.text.style.ForegroundColorSpan
-import android.text.style.StyleSpan
-import android.text.style.TypefaceSpan
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.audio.SonicAudioProcessor
 import androidx.media3.common.audio.ToInt16PcmAudioProcessor
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.OverlayEffect
-import androidx.media3.effect.StaticOverlaySettings
-import androidx.media3.effect.TextOverlay
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.EditedMediaItemSequence
@@ -42,6 +31,7 @@ import expo.modules.kotlin.records.Record
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.nio.ByteBuffer
 
 class LyricCue : Record {
   @Field var start: Double = 0.0
@@ -98,6 +88,21 @@ class VideoLyricExportModule : Module() {
     Name("VideoLyricExport")
     Events("onExportProgress")
 
+    AsyncFunction("extractAudioClip") { sourceUri: String, startSeconds: Double, durationSeconds: Double, promise: Promise ->
+      val context = appContext.reactContext?.applicationContext
+      if (context == null) {
+        promise.reject("NO_CONTEXT", "App is not ready to extract audio.", null)
+        return@AsyncFunction
+      }
+      Thread {
+        try {
+          promise.resolve(extractAudioClip(context, sourceUri, startSeconds, durationSeconds))
+        } catch (error: Exception) {
+          promise.reject("EXTRACT_FAILED", error.message ?: "Could not extract an audio clip.", error)
+        }
+      }.start()
+    }
+
     AsyncFunction("exportVideo") { options: ExportOptions, promise: Promise ->
       val context = appContext.reactContext?.applicationContext
       if (context == null) {
@@ -145,22 +150,15 @@ class VideoLyricExportModule : Module() {
 
       val videoSize = videoDisplaySize(localVideo)
       val previewWidth = options.previewWidth.takeIf { it > 1.0 } ?: 360.0
-      overlayScale = (videoSize.first / previewWidth).toFloat().coerceAtLeast(0.5f)
-      overlayFontPx = (options.fontSize * overlayScale).toInt().coerceAtLeast(24)
+      overlayScale = (videoSize.first / previewWidth).toFloat().coerceAtLeast(0.75f)
+      overlayFontPx = (options.fontSize * overlayScale).toInt().coerceAtLeast(1)
 
-      val lyricOverlay = object : TextOverlay() {
-        override fun getText(presentationTimeUs: Long): SpannableString {
-          val seconds = presentationTimeUs / 1_000_000.0
-          val cue = options.cues.lastOrNull { seconds >= it.start && seconds < it.end && it.text.isNotBlank() }
-          return styledText(cue, options)
-        }
-
-        override fun getOverlaySettings(presentationTimeUs: Long) =
-          StaticOverlaySettings.Builder()
-            .setBackgroundFrameAnchor(percentToAnchorX(options.x), percentToAnchorY(options.y))
-            .setOverlayFrameAnchor(0f, 0f)
-            .build()
-      }
+      val lyricOverlay = LyricBitmapOverlay(
+        options,
+        videoSize.first,
+        overlayScale,
+        overlayFontPx.toFloat(),
+      )
 
       val sonic = SonicAudioProcessor().apply {
         setOutputSampleRateHz(44100)
@@ -237,58 +235,82 @@ class VideoLyricExportModule : Module() {
     }
   }
 
-  private fun styledText(cue: LyricCue?, options: ExportOptions): SpannableString {
-    val text = cue?.text?.ifBlank { null } ?: " "
-    val spannable = SpannableString(text)
-    val end = text.length
-    if (cue == null || cue.text.isBlank()) {
-      return spannable
+  private fun extractAudioClip(
+    context: Context,
+    sourceUri: String,
+    startSeconds: Double,
+    durationSeconds: Double,
+  ): String {
+    val local = copyToLocalFile(context, sourceUri, "lyricvid-detect-src-${System.currentTimeMillis()}")
+    val output = File(context.cacheDir, "lyricvid-detect-${System.currentTimeMillis()}.m4a")
+    if (output.exists()) {
+      output.delete()
     }
 
-    val style = when {
-      options.bold && options.italic -> Typeface.BOLD_ITALIC
-      options.bold -> Typeface.BOLD
-      options.italic -> Typeface.ITALIC
-      else -> Typeface.NORMAL
-    }
-    spannable.setSpan(TypefaceSpan(androidFontFamily(options.fontFamily)), 0, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-    spannable.setSpan(StyleSpan(style), 0, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-    spannable.setSpan(AbsoluteSizeSpan(overlayFontPx, false), 0, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-    spannable.setSpan(ForegroundColorSpan(parseCssColor(options.color, Color.WHITE)), 0, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+    val extractor = MediaExtractor()
+    val muxer = MediaMuxer(output.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+    try {
+      extractor.setDataSource(local.absolutePath)
+      var audioIndex = -1
+      var format: MediaFormat? = null
+      for (index in 0 until extractor.trackCount) {
+        val trackFormat = extractor.getTrackFormat(index)
+        val mime = trackFormat.getString(MediaFormat.KEY_MIME) ?: continue
+        if (mime.startsWith("audio/")) {
+          audioIndex = index
+          format = trackFormat
+          break
+        }
+      }
+      if (audioIndex < 0 || format == null) {
+        throw IllegalStateException("The selected media has no audio track.")
+      }
 
-    options.backgroundColor?.let { background ->
-      spannable.setSpan(BackgroundColorSpan(parseCssColor(background, Color.TRANSPARENT)), 0, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-    }
+      extractor.selectTrack(audioIndex)
+      val startUs = (startSeconds.coerceAtLeast(0.0) * 1_000_000.0).toLong()
+      val endUs = startUs + (durationSeconds.coerceAtLeast(1.0) * 1_000_000.0).toLong()
+      extractor.seekTo(startUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
 
-    if (options.outline) {
-      spannable.setSpan(
-        object : CharacterStyle() {
-          override fun updateDrawState(paint: TextPaint) {
-            paint.setShadowLayer(4f * overlayScale, 0f, 1.5f * overlayScale, Color.BLACK)
-          }
-        },
-        0,
-        end,
-        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE,
-      )
+      val destTrack = muxer.addTrack(format)
+      muxer.start()
+      val buffer = ByteBuffer.allocate(256 * 1024)
+      val info = MediaCodec.BufferInfo()
+      var wrote = false
+      while (true) {
+        val size = extractor.readSampleData(buffer, 0)
+        if (size < 0) {
+          break
+        }
+        val time = extractor.sampleTime
+        if (time > endUs) {
+          break
+        }
+        if (time >= startUs) {
+          info.offset = 0
+          info.size = size
+          info.presentationTimeUs = time - startUs
+          info.flags = extractor.sampleFlags
+          muxer.writeSampleData(destTrack, buffer, info)
+          wrote = true
+        }
+        extractor.advance()
+      }
+      if (!wrote) {
+        throw IllegalStateException("Could not copy audio from that point in the clip.")
+      }
+    } finally {
+      try {
+        muxer.stop()
+      } catch (_: Exception) {
+      }
+      muxer.release()
+      extractor.release()
     }
-
-    val highlightStart = cue.highlightStart.coerceIn(0, end)
-    val highlightEnd = cue.highlightEnd.coerceIn(highlightStart, end)
-    if (highlightEnd > highlightStart) {
-      spannable.setSpan(
-        ForegroundColorSpan(parseCssColor(options.accentColor, Color.parseColor("#8B7CFF"))),
-        highlightStart,
-        highlightEnd,
-        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE,
-      )
+    if (output.length() <= 0L) {
+      throw IllegalStateException("The extracted audio clip was empty.")
     }
-    return spannable
+    return toFileUri(output.absolutePath)
   }
-
-  private fun percentToAnchorX(percent: Double) = ((percent / 50.0) - 1.0).toFloat().coerceIn(-1f, 1f)
-
-  private fun percentToAnchorY(percent: Double) = (1.0 - (percent / 50.0)).toFloat().coerceIn(-1f, 1f)
 
   private fun copyToLocalFile(context: Context, uriString: String, name: String): File {
     val dest = File(context.cacheDir, name)
@@ -320,19 +342,6 @@ class VideoLyricExportModule : Module() {
       current = current.cause
     }
     return parts.joinToString(" → ").ifBlank { "Video export failed." }
-  }
-
-  private fun androidFontFamily(id: String): String {
-    return when (id) {
-      "serif" -> "serif"
-      "rounded" -> "sans-serif-medium"
-      "narrow" -> "sans-serif-condensed"
-      "mono" -> "monospace"
-      "script" -> "cursive"
-      "poster" -> "sans-serif-black"
-      "light" -> "sans-serif-light"
-      else -> "sans-serif"
-    }
   }
 
   private fun startProgressUpdates() {
@@ -413,22 +422,4 @@ class VideoLyricExportModule : Module() {
   private fun filePath(uri: String) = uri.removePrefix("file://")
 
   private fun toFileUri(path: String) = if (path.startsWith("file:")) path else "file://$path"
-
-  private fun parseCssColor(value: String, fallback: Int): Int {
-    val raw = value.trim()
-    return try {
-      if (raw.startsWith("rgba") || raw.startsWith("rgb")) {
-        val parts = raw.substringAfter("(").substringBefore(")").split(",").map { it.trim() }
-        val r = parts.getOrNull(0)?.toFloatOrNull()?.toInt() ?: return fallback
-        val g = parts.getOrNull(1)?.toFloatOrNull()?.toInt() ?: return fallback
-        val b = parts.getOrNull(2)?.toFloatOrNull()?.toInt() ?: return fallback
-        val a = parts.getOrNull(3)?.toFloatOrNull()?.let { (it * 255).toInt().coerceIn(0, 255) } ?: 255
-        Color.argb(a, r, g, b)
-      } else {
-        Color.parseColor(raw)
-      }
-    } catch (_: Exception) {
-      fallback
-    }
-  }
 }

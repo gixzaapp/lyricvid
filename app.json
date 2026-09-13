@@ -2,14 +2,14 @@
   "expo": {
     "name": "AI LyricVid",
     "slug": "lyricvid",
-    "version": "1.0.0",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "lyricvid",
     "userInterfaceStyle": "dark",
     "ios": {
       "icon": "./assets/expo.icon",
-      "bundleIdentifier": "com.cypherlabs.lyricvid",
+      "bundleIdentifier": "com.gixza.lyricvid",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "AI LyricVid needs access to your videos so you can overlay lyrics.",
         "NSPhotoLibraryAddUsageDescription": "AI LyricVid saves the finished lyric video to your library."
@@ -17,7 +17,8 @@
       "supportsTablet": true
     },
     "android": {
-      "package": "com.cypherlabs.lyricvid",
+      "package": "com.gixza.lyricvid",
+      "versionCode": 3,
       "permissions": [
         "android.permission.READ_MEDIA_VIDEO",
         "android.permission.READ_MEDIA_AUDIO",
@@ -41,9 +42,10 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#07070B",
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
+          "backgroundColor": "#0b1326",
+          "dark": {
+            "backgroundColor": "#0b1326"
+          }
         }
       ],
       "expo-video",
@@ -72,17 +74,24 @@
       [
         "react-native-google-mobile-ads",
         {
-          "androidAppId": "ca-app-pub-3940256099942544~3347511713",
+          "androidAppId": "ca-app-pub-4393888257507260~8290240869",
           "iosAppId": "ca-app-pub-3940256099942544~1458002511"
         }
       ]
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "appUpdate": {
+        "manifestUrl": "https://raw.githubusercontent.com/gixzaapp/lyricvid/main/app-version.json",
+        "androidStoreUrl": "https://play.google.com/store/apps/details?id=com.gixza.lyricvid",
+        "iosStoreUrl": ""
+      }
     }
   },
   "react-native-google-mobile-ads": {
-    "android_app_id": "ca-app-pub-3940256099942544~3347511713",
+    "android_app_id": "ca-app-pub-4393888257507260~8290240869",
     "ios_app_id": "ca-app-pub-3940256099942544~1458002511"
   }
 }

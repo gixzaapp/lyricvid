@@ -11,7 +11,7 @@ import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
 import { Dimensions, Share } from 'react-native';
 
-import { wordsForLine } from '@/lib/lyrics';
+import { highlightRangeInText, lineEndTime, wordsForLine } from '@/lib/lyrics';
 import { assTimestamp, srtTimestamp } from '@/lib/time';
 import { colors } from '@/theme';
 import type { LyricLine, SubtitleStyle } from '@/types';
@@ -49,24 +49,15 @@ export function isHiResAudioError(error: unknown) {
 const nativeExport = requireOptionalNativeModule<NativeExport>('VideoLyricExport');
 
 function wordCues(lyrics: LyricLine[], offset: number, duration: number) {
-  return lyrics.flatMap((_, lineIndex) => {
-    const words = wordsForLine(lyrics, lineIndex, duration);
-    return words.map((word, wordIndex) => {
-      const start = Math.max(0, word.timestamp + offset);
-      const next = words[wordIndex + 1];
-      const end = next
-        ? Math.max(next.timestamp + offset, start + 0.12)
-        : Math.min(start + 0.8, duration || start + 0.8);
-      return {
-        start,
-        end: Math.max(end, start + 0.12),
-        text: words
-          .slice(0, wordIndex + 1)
-          .map((item) => item.text)
-          .join(' '),
-      };
-    });
-  });
+  return lyrics
+    .map((line, lineIndex) => {
+      const text = line.text;
+      const start = Math.max(0, line.timestamp + offset);
+      const lineEnd = lineEndTime(lyrics, lineIndex, duration, offset);
+      const end = duration > 0 ? Math.min(Math.max(lineEnd, start + 0.12), duration) : Math.max(lineEnd, start + 0.12);
+      return { start, end, text };
+    })
+    .filter((cue) => cue.text.trim().length > 0);
 }
 
 function cssToAssColor(hex: string, alphaHex = '00') {
@@ -141,17 +132,42 @@ export function isVideoExportAvailable() {
 }
 
 export function exportCues(lyrics: LyricLine[], offset: number, duration: number) {
-  return wordCues(lyrics, offset, duration).map((cue) => {
-    const parts = cue.text.split(' ');
-    const current = parts[parts.length - 1] ?? '';
-    const highlightStart = Math.max(0, cue.text.length - current.length);
-    return {
-      start: cue.start,
-      end: cue.end,
-      text: cue.text,
-      highlightStart,
-      highlightEnd: cue.text.length,
-    };
+  return lyrics.flatMap((line, lineIndex) => {
+    const text = line.text;
+    if (!text.trim()) {
+      return [];
+    }
+    const words = wordsForLine(lyrics, lineIndex, duration);
+
+    const lineStart = Math.max(0, line.timestamp + offset);
+    const lineEndRaw = lineEndTime(lyrics, lineIndex, duration, offset);
+    const lineEnd =
+      duration > 0 ? Math.min(Math.max(lineEndRaw, lineStart + 0.12), duration) : Math.max(lineEndRaw, lineStart + 0.12);
+
+    if (words.length === 0) {
+      return [{ start: lineStart, end: lineEnd, text, highlightStart: 0, highlightEnd: 0 }];
+    }
+
+    return words.flatMap((word, index) => {
+      const range = highlightRangeInText(text, words, index);
+      const start =
+        index === 0 ? lineStart : Math.max(lineStart, word.timestamp + offset);
+      const nextStart =
+        index < words.length - 1 ? Math.max(start + 0.04, words[index + 1].timestamp + offset) : lineEnd;
+      const end = duration > 0 ? Math.min(nextStart, duration) : nextStart;
+      if (end <= start) {
+        return [];
+      }
+      return [
+        {
+          start,
+          end,
+          text,
+          highlightStart: range.start,
+          highlightEnd: range.end,
+        },
+      ];
+    });
   });
 }
 
@@ -288,6 +304,7 @@ export async function exportFinalVideo(input: {
   offset: number;
   duration: number;
   style: SubtitleStyle;
+  previewWidth?: number;
   onProgress?: (progress: number) => void;
 }) {
   if (!nativeExport) {
@@ -334,7 +351,7 @@ export async function exportFinalVideo(input: {
       duration: input.duration,
       fontSize: input.style.fontSize,
       fontFamily: input.style.fontFamily,
-      previewWidth: Dimensions.get('window').width,
+      previewWidth: input.previewWidth && input.previewWidth > 1 ? input.previewWidth : Dimensions.get('window').width,
       color: input.style.color,
       accentColor: colors.accent,
       backgroundColor: input.style.backgroundColor,

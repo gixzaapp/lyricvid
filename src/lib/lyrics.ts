@@ -11,6 +11,46 @@ export function createLineId() {
   return `ln_${Date.now()}_${lineCounter}`;
 }
 
+export function tokensForLine(line: LyricLine) {
+  if (line.words?.length) {
+    return line.words.map((word) => word.text);
+  }
+  return splitLyricTokens(line.text);
+}
+
+export function splitLineAtWord(
+  line: LyricLine,
+  afterCount: number,
+  nextLineTimestamp: number,
+): { first: LyricLine; second: LyricLine } | null {
+  const tokens = tokensForLine(line);
+  if (afterCount < 1 || afterCount >= tokens.length) {
+    return null;
+  }
+
+  const firstText = tokens.slice(0, afterCount).join(' ');
+  const secondText = tokens.slice(afterCount).join(' ');
+  const firstWords = line.words?.slice(0, afterCount);
+  const secondWords = line.words?.slice(afterCount);
+  const span = Math.max(nextLineTimestamp - line.timestamp, 0.4);
+  const secondTime = secondWords?.[0]?.timestamp
+    ?? line.timestamp + (afterCount / tokens.length) * span;
+
+  return {
+    first: {
+      ...line,
+      text: firstText,
+      words: firstWords?.length ? firstWords : undefined,
+    },
+    second: {
+      id: createLineId(),
+      timestamp: Math.max(line.timestamp + 0.05, secondTime),
+      text: secondText,
+      words: secondWords?.length ? secondWords : undefined,
+    },
+  };
+}
+
 function stampToSeconds(minute: string, second: string, fraction?: string) {
   const frac = fraction ? Number(fraction.padEnd(3, '0').slice(0, 3)) / 1000 : 0;
   return Number(minute) * 60 + Number(second) + frac;
@@ -28,20 +68,27 @@ function unquoteYaml(value: string) {
 }
 
 export function splitLyricTokens(text: string) {
-  const trimmed = text.trim();
-  if (!trimmed) return [];
+  return text.trim().split(/\s+/).filter(Boolean);
+}
 
-  const spaced = trimmed.split(/\s+/).filter(Boolean);
-  if (spaced.length > 1) {
-    return spaced;
+export function highlightRangeInText(text: string, words: LyricWord[], currentIndex: number) {
+  if (currentIndex < 0 || currentIndex >= words.length || !text) {
+    return { start: 0, end: 0 };
   }
-
-  const chars = [...trimmed];
-  const denseScript = /[\u0900-\u0D7F\u3040-\u30FF\u3400-\u9FFF\uAC00-\uD7AF]/;
-  if (chars.length > 6 && !/\s/.test(trimmed) && denseScript.test(trimmed)) {
-    return chars;
+  let cursor = 0;
+  for (let index = 0; index < words.length; index += 1) {
+    const token = words[index].text;
+    if (!token) continue;
+    const at = text.indexOf(token, cursor);
+    if (at < 0) {
+      continue;
+    }
+    if (index === currentIndex) {
+      return { start: at, end: at + token.length };
+    }
+    cursor = at + token.length;
   }
-  return spaced;
+  return { start: 0, end: 0 };
 }
 
 export function interpolateWords(text: string, start: number, end: number): LyricWord[] {
@@ -53,10 +100,9 @@ export function interpolateWords(text: string, start: number, end: number): Lyri
     return [{ text: tokens[0], timestamp: start }];
   }
   const span = Math.max(end - start, 0.35);
-  const usable = span * 0.88;
   return tokens.map((token, index) => ({
     text: token,
-    timestamp: start + (index / tokens.length) * usable,
+    timestamp: start + (index / tokens.length) * span,
   }));
 }
 
@@ -238,26 +284,46 @@ export function lineEndTime(lyrics: LyricLine[], index: number, duration: number
   const line = lyrics[index];
   const next = lyrics[index + 1];
   const start = line.timestamp + offset;
-  const end = next ? next.timestamp + offset : Math.min(start + 4, duration || start + 4);
+  if (next) {
+    return Math.max(next.timestamp + offset, start + 0.4);
+  }
+  const end = duration > 0 ? duration : start + 4;
   return Math.max(end, start + 0.4);
 }
 
 export function wordsForLine(lyrics: LyricLine[], index: number, duration: number): LyricWord[] {
   const line = lyrics[index];
-  if (line.words?.length) {
-    return line.words;
-  }
-  const end = (lyrics[index + 1]?.timestamp ?? line.timestamp + 4);
+  const end = lyrics[index + 1]?.timestamp ?? (duration > 0 ? duration : line.timestamp + 4);
   return interpolateWords(line.text, line.timestamp, end > line.timestamp ? end : line.timestamp + 4);
 }
 
 export function getRevealedWords(lyrics: LyricLine[], time: number, offset: number, duration: number) {
+  return getVisibleLineWords(lyrics, time, offset, duration).words;
+}
+
+export function getVisibleLineWords(
+  lyrics: LyricLine[],
+  time: number,
+  offset: number,
+  duration: number,
+) {
   const index = getActiveLineIndex(lyrics, time, offset);
   if (index < 0) {
-    return [] as LyricWord[];
+    return { words: [] as LyricWord[], currentIndex: -1, text: '' };
   }
+  const words = wordsForLine(lyrics, index, duration);
   const cursor = time - offset;
-  return wordsForLine(lyrics, index, duration).filter((word) => word.timestamp <= cursor);
+  let currentIndex = -1;
+  for (let i = 0; i < words.length; i += 1) {
+    if (words[i].timestamp <= cursor) {
+      currentIndex = i;
+    }
+  }
+  return {
+    words,
+    currentIndex: currentIndex < 0 ? 0 : currentIndex,
+    text: lyrics[index].text,
+  };
 }
 
 export function flattenWords(lyrics: LyricLine[], duration: number): LyricWord[] {

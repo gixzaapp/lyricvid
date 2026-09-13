@@ -28,6 +28,7 @@ export function ExportPanel() {
   const track = useProjectStore((s) => s.track);
   const videoDuration = useProjectStore((s) => s.videoDuration);
   const timingDuration = useProjectStore((s) => s.timingDuration);
+  const stageWidth = useProjectStore((s) => s.stageWidth);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
 
@@ -53,6 +54,7 @@ export function ExportPanel() {
         offset,
         duration,
         style,
+        previewWidth: stageWidth,
         onProgress: (value) => {
           setProgress(value);
           showExportInterstitialAtProgress(value);

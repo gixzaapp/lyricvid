@@ -25,7 +25,15 @@ export const PRESET_TEXT_COLORS = [
   '#111111',
 ] as const;
 
-export type FontPresetId = 'sans' | 'serif' | 'rounded' | 'narrow' | 'mono' | 'script' | 'poster' | 'light';
+export type FontPresetId =
+  | 'sans'
+  | 'serif'
+  | 'condensed'
+  | 'typewriter'
+  | 'mono'
+  | 'script'
+  | 'marker'
+  | 'smallcaps';
 
 export const FONT_PRESETS: {
   id: FontPresetId;
@@ -35,17 +43,43 @@ export const FONT_PRESETS: {
 }[] = [
   { id: 'sans', label: 'Sans', ios: undefined, android: 'sans-serif' },
   { id: 'serif', label: 'Serif', ios: 'Georgia', android: 'serif' },
-  { id: 'rounded', label: 'Rounded', ios: 'Avenir Next', android: 'sans-serif-medium' },
-  { id: 'narrow', label: 'Narrow', ios: 'AvenirNextCondensed-DemiBold', android: 'sans-serif-condensed' },
+  { id: 'condensed', label: 'Condensed', ios: 'AvenirNextCondensed-DemiBold', android: 'sans-serif-condensed' },
+  { id: 'typewriter', label: 'Typewriter', ios: 'AmericanTypewriter-Semibold', android: 'serif-monospace' },
   { id: 'mono', label: 'Mono', ios: 'Menlo', android: 'monospace' },
   { id: 'script', label: 'Script', ios: 'Noteworthy-Bold', android: 'cursive' },
-  { id: 'poster', label: 'Poster', ios: 'HelveticaNeue-CondensedBold', android: 'sans-serif-black' },
-  { id: 'light', label: 'Light', ios: 'HelveticaNeue-Light', android: 'sans-serif-light' },
+  { id: 'marker', label: 'Marker', ios: 'MarkerFelt-Wide', android: 'casual' },
+  { id: 'smallcaps', label: 'Caps', ios: 'Copperplate-Bold', android: 'sans-serif-smallcaps' },
 ];
 
+const LEGACY_FONT_IDS: Record<string, FontPresetId> = {
+  rounded: 'sans',
+  narrow: 'condensed',
+  poster: 'condensed',
+  light: 'sans',
+};
+
 export function fontFamilyFor(id?: string) {
-  const preset = FONT_PRESETS.find((item) => item.id === id) ?? FONT_PRESETS[0];
+  const resolved = (id && LEGACY_FONT_IDS[id]) || id;
+  const preset = FONT_PRESETS.find((item) => item.id === resolved) ?? FONT_PRESETS[0];
   return { ios: preset.ios, android: preset.android, id: preset.id };
+}
+
+const COMPLEX_SCRIPT =
+  /[\u0590-\u05FF\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\u0900-\u0DFF\u0E00-\u0E7F\u0F00-\u0FFF\u1000-\u109F\u1100-\u11FF\u1200-\u137F\u1780-\u17FF\u3040-\u30FF\u3100-\u312F\u3400-\u9FFF\uA960-\uA97F\uAC00-\uD7AF\uF900-\uFAFF]/;
+
+export function usesSystemLyricFont(text: string) {
+  return COMPLEX_SCRIPT.test(text);
+}
+
+export function lyricFontStyle(fontId: string | undefined, text: string, platform: 'ios' | 'android') {
+  if (usesSystemLyricFont(text)) {
+    return {};
+  }
+  const resolved = fontFamilyFor(fontId);
+  if (platform === 'ios') {
+    return resolved.ios ? { fontFamily: resolved.ios } : {};
+  }
+  return { fontFamily: resolved.android };
 }
 
 export const PRESET_BACKGROUNDS = [

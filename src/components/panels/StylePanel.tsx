@@ -16,13 +16,13 @@ export function StylePanel() {
         {FONT_PRESETS.map((font) => {
           const resolved = fontFamilyFor(font.id);
           const family = Platform.OS === 'ios' ? resolved.ios : resolved.android;
-          const selected = style.fontFamily === font.id;
+          const selected = fontFamilyFor(style.fontFamily).id === font.id;
           return (
             <Pressable
               key={font.id}
               onPress={() => setStyle({ fontFamily: font.id })}
               style={[styles.fontCard, selected && styles.fontCardOn]}>
-              <Text style={[styles.fontSample, family ? { fontFamily: family } : null]}>Ag</Text>
+              <Text style={[styles.fontSample, family ? { fontFamily: family } : null]}>Lyric</Text>
               <Text style={[styles.fontName, selected && styles.fontNameOn]}>{font.label}</Text>
             </Pressable>
           );
@@ -123,7 +123,7 @@ const styles = StyleSheet.create({
     paddingRight: 8,
   },
   fontCard: {
-    width: 72,
+    width: 78,
     height: 72,
     borderRadius: 14,
     backgroundColor: colors.surface2,
@@ -139,8 +139,8 @@ const styles = StyleSheet.create({
   },
   fontSample: {
     color: colors.text,
-    fontSize: 22,
-    fontWeight: '700',
+    fontSize: 18,
+    fontWeight: '600',
   },
   fontName: {
     color: colors.muted,

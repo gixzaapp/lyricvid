@@ -1,22 +1,27 @@
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { Platform, StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { BrandSplash } from '@/components/BrandSplash';
+import { UpdatePrompt } from '@/components/UpdatePrompt';
 import { initializeAds } from '@/lib/ads';
 import { colors } from '@/theme';
 
-SplashScreen.preventAutoHideAsync();
+SplashScreen.setOptions({ duration: 0, fade: false });
 
 export default function RootLayout() {
+  const [showBrand, setShowBrand] = useState(Platform.OS !== 'android');
+
   useEffect(() => {
-    SplashScreen.hideAsync();
+    SplashScreen.hide();
     void initializeAds();
   }, []);
 
   return (
-    <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.bg }}>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#0b1326' }}>
       <StatusBar style="light" />
       <Stack
         screenOptions={{
@@ -25,6 +30,13 @@ export default function RootLayout() {
           animation: 'fade',
         }}
       />
+      {showBrand ? (
+        <View style={StyleSheet.absoluteFillObject}>
+          <BrandSplash onFinished={() => setShowBrand(false)} />
+        </View>
+      ) : (
+        <UpdatePrompt />
+      )}
     </GestureHandlerRootView>
   );
 }

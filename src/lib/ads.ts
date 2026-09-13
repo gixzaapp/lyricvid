@@ -1,5 +1,7 @@
 import { NativeModules, Platform } from 'react-native';
 
+import { ADMOB_BANNER_UNIT_ID, ADMOB_INTERSTITIAL_UNIT_ID } from '@/lib/adUnits';
+
 type AdsModule = typeof import('react-native-google-mobile-ads');
 
 let ads: AdsModule | null = null;
@@ -19,6 +21,14 @@ export function getAds() {
     ads = require('react-native-google-mobile-ads') as AdsModule;
   }
   return ads;
+}
+
+export function getBannerAdUnitId() {
+  return ADMOB_BANNER_UNIT_ID;
+}
+
+function getInterstitialAdUnitId() {
+  return ADMOB_INTERSTITIAL_UNIT_ID;
 }
 
 export async function initializeAds() {
@@ -41,7 +51,7 @@ export function preloadExportInterstitial() {
   }
   try {
     interstitialLoaded = false;
-    interstitial = module.InterstitialAd.createForAdRequest(module.TestIds.INTERSTITIAL);
+    interstitial = module.InterstitialAd.createForAdRequest(getInterstitialAdUnitId());
     interstitial.addAdEventListener(module.AdEventType.LOADED, () => {
       interstitialLoaded = true;
     });

@@ -1,6 +1,6 @@
 import { StyleSheet, View } from 'react-native';
 
-import { getAds } from '@/lib/ads';
+import { getAds, getBannerAdUnitId } from '@/lib/ads';
 
 export function LandingBanner() {
   const ads = getAds();
@@ -8,11 +8,11 @@ export function LandingBanner() {
     return null;
   }
 
-  const { BannerAd, BannerAdSize, TestIds } = ads;
+  const { BannerAd, BannerAdSize } = ads;
   return (
     <View style={styles.wrap}>
       <BannerAd
-        unitId={TestIds.BANNER}
+        unitId={getBannerAdUnitId()}
         size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
         onAdFailedToLoad={() => undefined}
       />

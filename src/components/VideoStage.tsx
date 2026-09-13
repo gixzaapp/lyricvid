@@ -6,7 +6,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { LyricOverlay } from '@/components/LyricOverlay';
 import { PlaybackBar } from '@/components/PlaybackBar';
-import { getRevealedWords } from '@/lib/lyrics';
+import { getActiveLineIndex, getVisibleLineWords } from '@/lib/lyrics';
 import { useProjectStore } from '@/store/project';
 import { colors } from '@/theme';
 
@@ -17,10 +17,11 @@ export type VideoStageHandle = {
 type Props = {
   currentTime: number;
   onCurrentTime: (time: number) => void;
+  compact?: boolean;
 };
 
 export const VideoStage = forwardRef<VideoStageHandle, Props>(function VideoStage(
-  { currentTime, onCurrentTime },
+  { currentTime, onCurrentTime, compact = false },
   ref,
 ) {
   const videoUri = useProjectStore((s) => s.videoUri);
@@ -33,6 +34,7 @@ export const VideoStage = forwardRef<VideoStageHandle, Props>(function VideoStag
   const setVideoDuration = useProjectStore((s) => s.setVideoDuration);
   const setAudioDuration = useProjectStore((s) => s.setAudioDuration);
   const setPosition = useProjectStore((s) => s.setPosition);
+  const setStageWidth = useProjectStore((s) => s.setStageWidth);
 
   const replaceAudio = !keepOriginalAudio && Boolean(audioUri);
   const videoPlayer = useVideoPlayer(videoUri ? { uri: videoUri } : null, (player) => {
@@ -102,7 +104,9 @@ export const VideoStage = forwardRef<VideoStageHandle, Props>(function VideoStag
   }, [audioStatus.currentTime, audioStatus.playing, replaceAudio, videoEnd, audioPlayer, videoPlayer, onCurrentTime]);
 
   const duration = videoEnd;
-  const revealedWords = getRevealedWords(lyrics, currentTime, offset, duration);
+  const visibleLine = getVisibleLineWords(lyrics, currentTime, offset, duration);
+  const activeIndex = getActiveLineIndex(lyrics, currentTime, offset);
+  const lineKey = lyrics.length === 0 ? 'placeholder' : activeIndex >= 0 ? lyrics[activeIndex].id : 'hidden';
 
   const seekTo = (time: number) => {
     const end = videoEnd;
@@ -138,8 +142,10 @@ export const VideoStage = forwardRef<VideoStageHandle, Props>(function VideoStag
   useImperativeHandle(ref, () => ({ seek: seekTo }), [replaceAudio, audioPlayer, videoPlayer, videoDuration]);
 
   return (
-    <View style={styles.wrap}>
-      <View style={styles.stage}>
+    <View style={[styles.wrap, compact && styles.wrapCompact]} pointerEvents={compact ? 'none' : 'auto'}>
+      <View
+        style={styles.stage}
+        onLayout={(event) => setStageWidth(event.nativeEvent.layout.width)}>
         <VideoView
           player={videoPlayer}
           style={styles.video}
@@ -148,7 +154,10 @@ export const VideoStage = forwardRef<VideoStageHandle, Props>(function VideoStag
           fullscreenOptions={{ enable: false }}
         />
         <LyricOverlay
-          words={revealedWords}
+          text={visibleLine.text}
+          words={visibleLine.words}
+          currentIndex={visibleLine.currentIndex}
+          lineKey={lineKey}
           placeholder={lyrics.length ? undefined : 'Search a song to overlay lyrics'}
           styleConfig={style}
           onPositionChange={setPosition}
@@ -169,6 +178,11 @@ const styles = StyleSheet.create({
   wrap: {
     flex: 1,
     backgroundColor: colors.bgElevated,
+  },
+  wrapCompact: {
+    flex: 0,
+    height: 0,
+    overflow: 'hidden',
   },
   stage: {
     flex: 1,
