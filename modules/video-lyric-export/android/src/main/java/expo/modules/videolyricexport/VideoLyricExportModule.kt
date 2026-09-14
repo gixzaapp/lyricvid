@@ -37,6 +37,7 @@ class LyricCue : Record {
   @Field var start: Double = 0.0
   @Field var end: Double = 0.0
   @Field var text: String = ""
+  @Field var lineId: String = ""
   @Field var highlightStart: Int = 0
   @Field var highlightEnd: Int = 0
 }
@@ -59,6 +60,8 @@ class ExportOptions : Record {
   @Field var align: String = "center"
   @Field var x: Double = 50.0
   @Field var y: Double = 78.0
+  @Field var animation: String = "rise"
+  @Field var animationSpeed: Double = 1.0
   @Field var cues: List<LyricCue> = emptyList()
 }
 

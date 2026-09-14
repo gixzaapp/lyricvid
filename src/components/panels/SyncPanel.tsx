@@ -2,17 +2,19 @@ import Slider from '@react-native-community/slider';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { Button, Helper, SectionLabel } from '@/components/ui';
+import { useT } from '@/store/locale';
 import { colors } from '@/theme';
 import { useProjectStore } from '@/store/project';
 
 export function SyncPanel() {
+  const t = useT();
   const offset = useProjectStore((s) => s.offset);
   const setOffset = useProjectStore((s) => s.setOffset);
   const lyricsSynced = useProjectStore((s) => s.lyricsSynced);
 
   return (
     <View style={styles.col}>
-      <SectionLabel>Timing offset</SectionLabel>
+      <SectionLabel>{t('sync.title')}</SectionLabel>
       <Text style={styles.value}>
         {offset >= 0 ? '+' : ''}
         {offset.toFixed(2)}s
@@ -29,16 +31,12 @@ export function SyncPanel() {
       />
       <View style={styles.row}>
         <Button compact variant="secondary" label="-0.5s" onPress={() => setOffset(Math.max(-10, offset - 0.5))} />
-        <Button compact variant="secondary" label="Reset" onPress={() => setOffset(0)} />
+        <Button compact variant="secondary" label={t('sync.reset')} onPress={() => setOffset(0)} />
         <Button compact variant="secondary" label="+0.5s" onPress={() => setOffset(Math.min(10, offset + 0.5))} />
       </View>
-      <Helper>
-        Shift every line together if the lyrics start a little early or late compared with the video.
-      </Helper>
+      <Helper>{t('sync.help')}</Helper>
       {!lyricsSynced ? (
-        <Helper tone="warning">
-          These lyrics are not line-synced. Use the offset plus per-line timestamps in Lyrics.
-        </Helper>
+        <Helper tone="warning">{t('sync.unsynced')}</Helper>
       ) : null}
     </View>
   );

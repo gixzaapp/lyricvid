@@ -5,17 +5,20 @@ import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/ui';
+import { isTranslationKey } from '@/i18n';
 import {
   checkAppUpdate,
   getInstalledVersion,
   openStoreListing,
 } from '@/lib/appUpdate';
+import { errorText, useT } from '@/store/locale';
 import { colors } from '@/theme';
 
 const APP_VERSION = getInstalledVersion();
 
 export default function AboutScreen() {
   const router = useRouter();
+  const t = useT();
   const [checking, setChecking] = useState(false);
 
   const checkForUpdate = async () => {
@@ -23,19 +26,23 @@ export default function AboutScreen() {
       setChecking(true);
       const update = await checkAppUpdate({ ignoreDismissed: true });
       if (!update) {
-        Alert.alert('Up to date', `You are on version ${APP_VERSION}.`);
+        Alert.alert(t('about.upToDate'), t('about.upToDateBody', { version: APP_VERSION }));
         return;
       }
       Alert.alert(
-        update.required ? 'Update required' : 'Update available',
-        `${update.message}\n\nYou have ${update.installed}. Latest is ${update.latest}.`,
+        update.required ? t('about.updateRequired') : t('about.updateAvailable'),
+        t('about.updateBody', {
+          message: isTranslationKey(update.message) ? t(update.message) : update.message,
+          installed: update.installed,
+          latest: update.latest,
+        }),
         [
-          ...(update.required ? [] : [{ text: 'Later', style: 'cancel' as const }]),
-          { text: 'Update', onPress: () => void openStoreListing(update.storeUrl) },
+          ...(update.required ? [] : [{ text: t('about.later'), style: 'cancel' as const }]),
+          { text: t('about.update'), onPress: () => void openStoreListing(update.storeUrl) },
         ],
       );
     } catch (error) {
-      Alert.alert('Could not check', error instanceof Error ? error.message : 'Unknown error');
+      Alert.alert(t('about.checkFailed'), errorText(error, 'common.unknownError'));
     } finally {
       setChecking(false);
     }
@@ -44,35 +51,29 @@ export default function AboutScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.iconBtn} accessibilityLabel="Back">
+        <Pressable onPress={() => router.back()} style={styles.iconBtn} accessibilityLabel={t('about.back')}>
           <Ionicons name="chevron-back" size={22} color={colors.text} />
         </Pressable>
-        <Text style={styles.headerTitle}>About</Text>
+        <Text style={styles.headerTitle}>{t('about.title')}</Text>
         <View style={styles.iconBtn} />
       </View>
 
       <View style={styles.body}>
         <Text style={styles.title}>AI LyricVid</Text>
-        <Text style={styles.version}>{`Version ${APP_VERSION}`}</Text>
-        <Text style={styles.copy}>
-          AI LyricVid overlays timed lyrics on a video. Pick a clip, search a song, style the words,
-          then export a finished MP4 to your gallery.
-        </Text>
-        <Text style={styles.copy}>
-          Editing and export stay on this device. Detect song sends a short audio clip to AudD to
-          identify the track. No account is required.
-        </Text>
+        <Text style={styles.version}>{t('about.version', { version: APP_VERSION })}</Text>
+        <Text style={styles.copy}>{t('about.copy1')}</Text>
+        <Text style={styles.copy}>{t('about.copy2')}</Text>
         <Button
-          label={checking ? 'Checking…' : 'Check for update'}
+          label={checking ? t('about.checking') : t('about.checkUpdate')}
           onPress={() => void checkForUpdate()}
           disabled={checking}
         />
         <View style={styles.credit}>
-          <Text style={styles.creditLabel}>Lyrics courtesy of</Text>
+          <Text style={styles.creditLabel}>{t('about.lyricsCourtesy')}</Text>
           <Pressable onPress={() => Linking.openURL('https://lrclib.net')}>
             <Text style={styles.creditLink}>LRCLIB</Text>
           </Pressable>
-          <Text style={[styles.creditLabel, { marginTop: 10 }]}>Song detection by</Text>
+          <Text style={[styles.creditLabel, { marginTop: 10 }]}>{t('about.songDetection')}</Text>
           <Pressable onPress={() => Linking.openURL('https://audd.io')}>
             <Text style={styles.creditLink}>AudD</Text>
           </Pressable>

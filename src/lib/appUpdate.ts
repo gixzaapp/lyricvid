@@ -1,4 +1,6 @@
 import Constants from 'expo-constants';
+
+import { keyedError } from '@/i18n';
 import {
   cacheDirectory,
   getInfoAsync,
@@ -29,7 +31,7 @@ type ExtraUpdateConfig = {
   iosStoreUrl?: string;
 };
 
-const DEFAULT_MESSAGE = 'A newer version of AI LyricVid is available.';
+const DEFAULT_MESSAGE = 'update.defaultMessage';
 const DEFAULT_ANDROID_STORE = 'https://play.google.com/store/apps/details?id=com.gixza.lyricvid';
 const DEFAULT_MANIFEST_URL =
   'https://raw.githubusercontent.com/gixzaapp/lyricvid/main/app-version.json';
@@ -98,11 +100,11 @@ export async function fetchUpdateManifest() {
   const url = extraConfig().manifestUrl || DEFAULT_MANIFEST_URL;
   const response = await fetch(url, { headers: { Accept: 'application/json' } });
   if (!response.ok) {
-    throw new Error(`Update check failed (${response.status}).`);
+    throw keyedError('update.checkFailedStatus', { status: response.status });
   }
   const manifest = parseManifest(await response.json());
   if (!manifest) {
-    throw new Error('Update manifest is missing a latest version.');
+    throw new Error('update.manifestMissing');
   }
   return manifest;
 }
@@ -135,7 +137,7 @@ export async function checkAppUpdate(options?: {
 export async function openStoreListing(url: string) {
   const supported = await Linking.canOpenURL(url);
   if (!supported) {
-    throw new Error('Could not open the store listing.');
+    throw new Error('update.storeFailed');
   }
   await Linking.openURL(url);
 }

@@ -4,10 +4,12 @@ import { Alert, StyleSheet, Text, View } from 'react-native';
 import { Button, Card, Helper, SectionLabel } from '@/components/ui';
 import { pickFile } from '@/lib/media';
 import { formatDurationLabel } from '@/lib/time';
+import { errorText, useT } from '@/store/locale';
 import { useProjectStore } from '@/store/project';
 import { colors } from '@/theme';
 
 export function AudioPanel() {
+  const t = useT();
   const keepOriginalAudio = useProjectStore((s) => s.keepOriginalAudio);
   const audioName = useProjectStore((s) => s.audioName);
   const audioDuration = useProjectStore((s) => s.audioDuration);
@@ -24,7 +26,7 @@ export function AudioPanel() {
         setAudio(file);
       }
     } catch (error) {
-      Alert.alert('Could not pick audio', error instanceof Error ? error.message : 'Unknown error');
+      Alert.alert(t('audio.pickFailed'), errorText(error, 'common.unknownError'));
     } finally {
       setBusy(false);
     }
@@ -32,18 +34,18 @@ export function AudioPanel() {
 
   return (
     <View style={styles.col}>
-      <SectionLabel>Soundtrack</SectionLabel>
+      <SectionLabel>{t('audio.soundtrack')}</SectionLabel>
       <View style={styles.row}>
         <Button
           compact
-          label="Keep original"
+          label={t('audio.keep')}
           variant={keepOriginalAudio ? 'primary' : 'secondary'}
           onPress={() => setKeepOriginalAudio(true)}
           style={styles.flex}
         />
         <Button
           compact
-          label="Replace audio"
+          label={t('audio.replace')}
           variant={!keepOriginalAudio ? 'primary' : 'secondary'}
           onPress={() => setKeepOriginalAudio(false)}
           style={styles.flex}
@@ -51,16 +53,16 @@ export function AudioPanel() {
       </View>
 
       {keepOriginalAudio ? (
-        <Helper>Preview uses the audio already on the video ({formatDurationLabel(videoDuration)}).</Helper>
+        <Helper>{t('audio.keepHelp', { duration: formatDurationLabel(videoDuration) })}</Helper>
       ) : (
         <Card>
-          <Text style={styles.name}>{audioName ?? 'No replacement track yet'}</Text>
+          <Text style={styles.name}>{audioName ?? t('audio.noTrack')}</Text>
           {audioDuration > 0 ? (
-            <Helper>Replacement duration {formatDurationLabel(audioDuration)}</Helper>
+            <Helper>{t('audio.replaceDuration', { duration: formatDurationLabel(audioDuration) })}</Helper>
           ) : (
-            <Helper>Pick an mp3 or wav. Preview and export stop at the video length ({formatDurationLabel(videoDuration)}).</Helper>
+            <Helper>{t('audio.replaceHelp', { duration: formatDurationLabel(videoDuration) })}</Helper>
           )}
-          <Button compact label={busy ? 'Opening…' : 'Choose audio file'} onPress={pickAudio} disabled={busy} />
+          <Button compact label={busy ? t('audio.opening') : t('audio.choose')} onPress={pickAudio} disabled={busy} />
         </Card>
       )}
     </View>

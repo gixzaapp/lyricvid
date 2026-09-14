@@ -30,6 +30,8 @@ class LyricBitmapOverlay(
   private val emptyBitmap = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
   private val bitmaps = mutableMapOf<String, Bitmap>()
 
+  private data class LineSpan(val start: Double, val end: Double, val fadeOut: Boolean)
+
   override fun configure(videoSize: Size) {
     super.configure(videoSize)
     if (videoSize.width <= 0) {
@@ -47,15 +49,22 @@ class LyricBitmapOverlay(
     val seconds = presentationTimeUs / 1_000_000.0
     val cue = options.cues.lastOrNull { seconds >= it.start && seconds < it.end && it.text.isNotBlank() }
       ?: return emptyBitmap
-    val key = "${cue.text}\u0000${cue.highlightStart}\u0000${cue.highlightEnd}"
+    val karaoke = options.animation == "none"
+    val key =
+      if (karaoke) "${cue.text}\u0000${cue.highlightStart}\u0000${cue.highlightEnd}" else cue.text
     return bitmaps.getOrPut(key) { drawLine(cue) }
   }
 
   override fun getOverlaySettings(presentationTimeUs: Long): OverlaySettings {
+    val motion = overlayMotion(presentationTimeUs / 1_000_000.0)
     return StaticOverlaySettings.Builder()
-      .setBackgroundFrameAnchor(percentToAnchorX(options.x), percentToAnchorY(options.y))
+      .setBackgroundFrameAnchor(
+        percentToAnchorX(options.x + motion.slidePercent),
+        percentToAnchorY(options.y + motion.risePercent),
+      )
       .setOverlayFrameAnchor(0f, 0f)
-      .setAlphaScale(overlayAlpha(presentationTimeUs / 1_000_000.0))
+      .setScale(motion.scale, motion.scale)
+      .setAlphaScale(motion.alpha)
       .build()
   }
 
@@ -126,6 +135,10 @@ class LyricBitmapOverlay(
       return spanned
     }
     val textColor = parseCssColor(options.color, Color.WHITE)
+    if (options.animation != "none") {
+      spanned.setSpan(ForegroundColorSpan(textColor), 0, spanned.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+      return spanned
+    }
     val dimmed = Color.argb(
       (Color.alpha(textColor) * 0.72f).toInt().coerceIn(0, 255),
       Color.red(textColor),
@@ -155,9 +168,85 @@ class LyricBitmapOverlay(
       .build()
   }
 
-  private fun overlayAlpha(seconds: Double): Float {
-    val cue = options.cues.lastOrNull { seconds >= it.start && seconds < it.end && it.text.isNotBlank() }
-    return if (cue == null) 0f else 1f
+  private data class OverlayMotion(val alpha: Float, val scale: Float, val risePercent: Double, val slidePercent: Double)
+  private data class MotionSpec(
+    val fadeIn: Double,
+    val fadeOut: Double,
+    val risePercent: Double,
+    val slidePercent: Double,
+    val scaleFrom: Float,
+  )
+
+  private fun motionSpec(): MotionSpec {
+    var spec = when (options.animation) {
+      "none" -> MotionSpec(0.0, 0.0, 0.0, 0.0, 1f)
+      "fade" -> MotionSpec(0.28, 0.2, 0.0, 0.0, 1f)
+      "drop" -> MotionSpec(0.28, 0.2, -1.4, 0.0, 0.94f)
+      "pop" -> MotionSpec(0.22, 0.16, 0.0, 0.0, 0.72f)
+      "slide" -> MotionSpec(0.3, 0.2, 0.0, -2.4, 1f)
+      "zoom" -> MotionSpec(0.32, 0.22, 0.0, 0.0, 0.55f)
+      else -> MotionSpec(0.28, 0.2, 1.4, 0.0, 0.94f)
+    }
+    if (options.animation == "slide" && options.align == "right") {
+      spec = spec.copy(slidePercent = kotlin.math.abs(spec.slidePercent))
+    }
+    return spec
+  }
+
+  private fun overlayMotion(seconds: Double): OverlayMotion {
+    val spec = motionSpec()
+    val span = lineSpan(seconds) ?: return OverlayMotion(0f, spec.scaleFrom, spec.risePercent, spec.slidePercent)
+    val duration = (span.end - span.start).coerceAtLeast(0.12)
+    val rate = options.animationSpeed.let { if (it <= 0) 1.0 else it.coerceIn(0.4, 2.5) }
+    val enter = if (spec.fadeIn <= 0) {
+      1f
+    } else {
+      val fadeIn = (spec.fadeIn / rate).coerceAtMost((duration * 0.4).coerceAtLeast(0.08))
+      easeOutCubic(((seconds - span.start) / fadeIn).toFloat().coerceIn(0f, 1f))
+    }
+    var exit = 1f
+    if (span.fadeOut && spec.fadeOut > 0) {
+      val fadeOut = (spec.fadeOut / rate).coerceAtMost((duration * 0.28).coerceAtLeast(0.08))
+      exit = ((span.end - seconds) / fadeOut).toFloat().coerceIn(0f, 1f)
+    }
+    val amount = (enter * exit).coerceIn(0f, 1f)
+    return OverlayMotion(
+      alpha = amount,
+      scale = spec.scaleFrom + (1f - spec.scaleFrom) * enter,
+      risePercent = spec.risePercent * (1.0 - enter.toDouble()),
+      slidePercent = spec.slidePercent * (1.0 - enter.toDouble()),
+    )
+  }
+
+  private fun lineSpan(seconds: Double): LineSpan? {
+    val cues = options.cues
+    val index = cues.indexOfLast { seconds >= it.start && seconds < it.end && it.text.isNotBlank() }
+    if (index < 0) {
+      return null
+    }
+    val id = cueId(cues[index])
+    var first = index
+    while (first > 0 && cueId(cues[first - 1]) == id) {
+      first--
+    }
+    var last = index
+    while (last < cues.lastIndex && cueId(cues[last + 1]) == id) {
+      last++
+    }
+    val start = cues[first].start
+    val end = cues[last].end
+    val hasGapAfter = last == cues.lastIndex || cues[last + 1].start > end + 0.04
+    return LineSpan(start, end, hasGapAfter)
+  }
+
+  private fun cueId(cue: LyricCue): String {
+    return cue.lineId.ifBlank { "\u0000${cue.text}" }
+  }
+
+  private fun easeOutCubic(t: Float): Float {
+    val x = t.coerceIn(0f, 1f)
+    val inv = 1f - x
+    return 1f - inv * inv * inv
   }
 
   private fun typefaceFor(text: String): Typeface {

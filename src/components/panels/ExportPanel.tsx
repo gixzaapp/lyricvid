@@ -5,10 +5,10 @@ import { Button, Helper } from '@/components/ui';
 import { preloadExportInterstitial, resetExportAdGate, showExportInterstitialAtProgress } from '@/lib/ads';
 import {
   exportFinalVideo,
-  HIRES_AUDIO_MESSAGE,
   isHiResAudioError,
   isVideoExportAvailable,
 } from '@/lib/export';
+import { errorText, useT } from '@/store/locale';
 import { useProjectStore } from '@/store/project';
 import { colors } from '@/theme';
 
@@ -18,6 +18,7 @@ function fileStem(name: string | null) {
 }
 
 export function ExportPanel() {
+  const t = useT();
   const lyrics = useProjectStore((s) => s.lyrics);
   const offset = useProjectStore((s) => s.offset);
   const style = useProjectStore((s) => s.style);
@@ -61,21 +62,21 @@ export function ExportPanel() {
         },
       });
       Alert.alert(
-        'Video ready',
+        t('export.ready'),
         result.savedToGallery
-          ? `${result.filename} was saved to your gallery.`
-          : `${result.filename} is ready. Use the system sheet to save or share it.`,
+          ? t('export.savedGallery', { filename: result.filename })
+          : t('export.readyShare', { filename: result.filename }),
       );
     } catch (error) {
       if (isHiResAudioError(error)) {
         if (Platform.OS === 'android') {
-          ToastAndroid.show(HIRES_AUDIO_MESSAGE, ToastAndroid.LONG);
+          ToastAndroid.show(t('export.hiresBody'), ToastAndroid.LONG);
         } else {
-          Alert.alert('Hi-Res audio', HIRES_AUDIO_MESSAGE);
+          Alert.alert(t('export.hiresTitle'), t('export.hiresBody'));
         }
         return;
       }
-      Alert.alert('Export failed', error instanceof Error ? error.message : 'Unknown error');
+      Alert.alert(t('export.failed'), errorText(error, 'common.unknownError'));
     } finally {
       setBusy(false);
       setProgress(0);
@@ -85,12 +86,10 @@ export function ExportPanel() {
   return (
     <View style={styles.col}>
       {!canExportVideo ? (
-        <Helper>
-          Open the AI LyricVid app from the Android/iOS build to export. Expo Go cannot create a finished MP4.
-        </Helper>
+        <Helper>{t('export.expoGo')}</Helper>
       ) : null}
       <Button
-        label={busy ? 'Exporting video…' : 'Export video'}
+        label={busy ? t('export.busy') : t('export.action')}
         disabled={!videoUri || !lyrics.length || busy}
         onPress={exportVideo}
       />

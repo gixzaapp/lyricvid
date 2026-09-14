@@ -13,12 +13,14 @@ const headers = {
 export class LrclibError extends Error {
   status?: number;
   retryAfter?: number;
+  vars?: { seconds?: number; status?: number };
 
-  constructor(message: string, status?: number, retryAfter?: number) {
+  constructor(message: string, status?: number, retryAfter?: number, vars?: { seconds?: number; status?: number }) {
     super(message);
     this.name = 'LrclibError';
     this.status = status;
     this.retryAfter = retryAfter;
+    this.vars = vars;
   }
 }
 
@@ -27,19 +29,15 @@ async function request<T>(path: string): Promise<T> {
 
   if (response.status === 429) {
     const retryAfter = Number(response.headers.get('Retry-After') ?? '1');
-    throw new LrclibError(
-      `LRCLIB rate limit hit. Try again in ${retryAfter || 1}s.`,
-      429,
-      retryAfter,
-    );
+    throw new LrclibError('search.rateLimit', 429, retryAfter, { seconds: retryAfter || 1 });
   }
 
   if (response.status === 404) {
-    throw new LrclibError('Track not found on LRCLIB.', 404);
+    throw new LrclibError('search.trackNotFound', 404);
   }
 
   if (!response.ok) {
-    throw new LrclibError(`LRCLIB request failed (${response.status}).`, response.status);
+    throw new LrclibError('search.requestFailed', response.status, undefined, { status: response.status });
   }
 
   return (await response.json()) as T;
@@ -48,8 +46,8 @@ async function request<T>(path: string): Promise<T> {
 function toTrack(raw: Partial<LrclibTrack> & { name?: string; lyricsfile?: string | null }): LrclibTrack {
   return {
     id: raw.id ?? 0,
-    trackName: raw.trackName ?? raw.name ?? 'Unknown',
-    artistName: raw.artistName ?? 'Unknown artist',
+    trackName: raw.trackName ?? raw.name ?? 'search.unknownTrack',
+    artistName: raw.artistName ?? 'search.unknownArtist',
     albumName: raw.albumName ?? '',
     duration: raw.duration ?? 0,
     instrumental: Boolean(raw.instrumental),

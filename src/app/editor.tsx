@@ -22,21 +22,24 @@ import { SyncPanel } from '@/components/panels/SyncPanel';
 import { VideoStage, type VideoStageHandle } from '@/components/VideoStage';
 import { getLyricsById } from '@/lib/lrclib';
 import { detectSongFromMedia } from '@/lib/songDetect';
+import { errorText, useT } from '@/store/locale';
 import { useProjectStore } from '@/store/project';
 import { colors } from '@/theme';
+import type { TranslationKey } from '@/i18n';
 
 type TabId = 'audio' | 'lyrics' | 'style' | 'sync' | 'export';
 
-const TABS: { id: TabId; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { id: 'audio', label: 'Audio', icon: 'musical-notes-outline' },
-  { id: 'lyrics', label: 'Lyrics', icon: 'text-outline' },
-  { id: 'style', label: 'Style', icon: 'color-palette-outline' },
-  { id: 'sync', label: 'Sync', icon: 'time-outline' },
-  { id: 'export', label: 'Export', icon: 'share-outline' },
+const TABS: { id: TabId; labelKey: TranslationKey; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { id: 'audio', labelKey: 'editor.audio', icon: 'musical-notes-outline' },
+  { id: 'lyrics', labelKey: 'editor.lyrics', icon: 'text-outline' },
+  { id: 'style', labelKey: 'editor.style', icon: 'color-palette-outline' },
+  { id: 'sync', labelKey: 'editor.sync', icon: 'time-outline' },
+  { id: 'export', labelKey: 'editor.export', icon: 'share-outline' },
 ];
 
 export default function EditorScreen() {
   const router = useRouter();
+  const t = useT();
   const videoUri = useProjectStore((s) => s.videoUri);
   const track = useProjectStore((s) => s.track);
   const applyTrack = useProjectStore((s) => s.applyTrack);
@@ -67,67 +70,67 @@ export default function EditorScreen() {
     if (!pendingSongDetect || !videoUri) {
       return;
     }
-    setPendingSongDetect(false);
-    Alert.alert(
-      'Detect song?',
-      'Identify this video’s audio and load lyrics automatically?',
-      [
-        { text: 'No', style: 'cancel' },
-        {
-          text: 'Yes',
-          onPress: () => {
-            void (async () => {
-              setDetecting(true);
-              try {
-                const project = useProjectStore.getState();
-                const sourceUri = project.videoUri ?? videoUri;
-                if (!sourceUri) {
-                  throw new Error('Pick a video first.');
+    const timer = setTimeout(() => {
+      setPendingSongDetect(false);
+      Alert.alert(
+        t('detect.title'),
+        t('detect.body'),
+        [
+          { text: t('common.no'), style: 'cancel' },
+          {
+            text: t('common.yes'),
+            onPress: () => {
+              void (async () => {
+                setDetecting(true);
+                try {
+                  const project = useProjectStore.getState();
+                  const sourceUri = project.videoUri ?? videoUri;
+                  if (!sourceUri) {
+                    throw new Error('editor.pickVideo');
+                  }
+                  const { match, tracks } = await detectSongFromMedia({
+                    sourceUri,
+                    currentTime: 0,
+                    mediaDuration: project.videoDuration,
+                  });
+                  if (!tracks[0]) {
+                    Alert.alert(
+                      t('detect.noLyricsTitle'),
+                      t('detect.noLyricsBody', { artist: match.artist, title: match.title }),
+                    );
+                    return;
+                  }
+                  const full = await getLyricsById(tracks[0].id);
+                  applyTrack(full);
+                  Alert.alert(t('detect.loadedTitle'), `${match.artist} — ${match.title}`);
+                } catch (error) {
+                  Alert.alert(t('detect.failTitle'), errorText(error, 'detect.failFallback'));
+                } finally {
+                  setDetecting(false);
                 }
-                const { match, tracks } = await detectSongFromMedia({
-                  sourceUri,
-                  currentTime: 0,
-                  mediaDuration: project.videoDuration,
-                });
-                if (!tracks[0]) {
-                  Alert.alert(
-                    'Song found, no lyrics',
-                    `${match.artist} — ${match.title} was recognized, but LRCLIB has no lyrics. Use Search lyrics to try another match.`,
-                  );
-                  return;
-                }
-                const full = await getLyricsById(tracks[0].id);
-                applyTrack(full);
-                Alert.alert('Lyrics loaded', `${match.artist} — ${match.title}`);
-              } catch (error) {
-                Alert.alert(
-                  'Could not detect song',
-                  error instanceof Error ? error.message : 'Try Detect from audio in Search lyrics.',
-                );
-              } finally {
-                setDetecting(false);
-              }
-            })();
+              })();
+            },
           },
-        },
-      ],
-    );
-  }, [applyTrack, pendingSongDetect, setPendingSongDetect, videoUri]);
+        ],
+      );
+    }, 450);
+    return () => clearTimeout(timer);
+  }, [applyTrack, pendingSongDetect, setPendingSongDetect, t, videoUri]);
 
   const keyboardOpen = keyboardHeight > 0;
   const dockLift = Platform.OS === 'android' ? Math.max(0, keyboardHeight - insets.bottom) : 0;
 
   const title = useMemo(
-    () => (track ? track.trackName : 'Lyric editor'),
-    [track],
+    () => (track ? track.trackName : t('editor.title')),
+    [t, track],
   );
 
   if (!videoUri) {
     return (
       <SafeAreaView style={styles.missing}>
-        <Text style={styles.missingText}>Pick a video first.</Text>
+        <Text style={styles.missingText}>{t('editor.pickVideo')}</Text>
         <Pressable onPress={() => router.replace('/')}>
-          <Text style={styles.link}>Back home</Text>
+          <Text style={styles.link}>{t('editor.backHome')}</Text>
         </Pressable>
       </SafeAreaView>
     );
@@ -171,7 +174,7 @@ export default function EditorScreen() {
                     size={18}
                     color={active ? colors.accent : colors.muted}
                   />
-                  <Text style={[styles.tabLabel, active && styles.tabLabelOn]}>{item.label}</Text>
+                  <Text style={[styles.tabLabel, active && styles.tabLabelOn]}>{t(item.labelKey)}</Text>
                 </Pressable>
               );
             })}
@@ -206,7 +209,7 @@ export default function EditorScreen() {
       {detecting ? (
         <View style={styles.detectOverlay}>
           <ActivityIndicator color={colors.accent} size="large" />
-          <Text style={styles.detectText}>Detecting song…</Text>
+          <Text style={styles.detectText}>{t('editor.detecting')}</Text>
         </View>
       ) : null}
     </SafeAreaView>

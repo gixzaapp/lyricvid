@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button, Helper, SectionLabel } from '@/components/ui';
 import { tokensForLine } from '@/lib/lyrics';
+import { useT } from '@/store/locale';
 import { colors } from '@/theme';
 import type { LyricLine } from '@/types';
 
@@ -14,6 +15,7 @@ type Props = {
 };
 
 export function SplitLineModal({ line, onClose, onSplit }: Props) {
+  const t = useT();
   const tokens = useMemo(() => (line ? tokensForLine(line) : []), [line]);
   const [afterCount, setAfterCount] = useState(1);
 
@@ -30,15 +32,15 @@ export function SplitLineModal({ line, onClose, onSplit }: Props) {
     <Modal visible={Boolean(line)} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView style={styles.safe}>
         <View style={styles.header}>
-          <Text style={styles.title}>Split line</Text>
+          <Text style={styles.title}>{t('split.title')}</Text>
           <Pressable onPress={onClose}>
-            <Text style={styles.close}>Close</Text>
+            <Text style={styles.close}>{t('common.close')}</Text>
           </Pressable>
         </View>
         {canSplit ? (
-          <Helper>Tap the last word that should stay on this line. The rest becomes a new line under it.</Helper>
+          <Helper>{t('split.help')}</Helper>
         ) : (
-          <Helper tone="warning">This line needs at least two words to split.</Helper>
+          <Helper tone="warning">{t('split.needWords')}</Helper>
         )}
         <ScrollView contentContainerStyle={styles.words} keyboardShouldPersistTaps="handled">
           {tokens.map((word, index) => {
@@ -61,18 +63,18 @@ export function SplitLineModal({ line, onClose, onSplit }: Props) {
         </ScrollView>
         {canSplit ? (
           <View style={styles.preview}>
-            <SectionLabel>This line</SectionLabel>
+            <SectionLabel>{t('split.thisLine')}</SectionLabel>
             <Text style={styles.previewText}>{first}</Text>
-            <SectionLabel>Next line</SectionLabel>
+            <SectionLabel>{t('split.nextLine')}</SectionLabel>
             <Text style={styles.previewText}>{second}</Text>
           </View>
         ) : null}
         <Button
-          label="Split"
+          label={t('split.action')}
           disabled={!canSplit || afterCount < 1 || afterCount >= tokens.length}
           onPress={() => onSplit(afterCount)}
         />
-        <Button compact variant="secondary" label="Cancel" onPress={onClose} />
+        <Button compact variant="secondary" label={t('common.cancel')} onPress={onClose} />
       </SafeAreaView>
     </Modal>
   );

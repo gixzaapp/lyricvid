@@ -2,16 +2,44 @@ import Slider from '@react-native-community/slider';
 import { Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { Chip, SectionLabel } from '@/components/ui';
+import type { TranslationKey } from '@/i18n';
+import { ANIMATION_PRESETS, ANIMATION_SPEED_MAX, ANIMATION_SPEED_MIN, animatesWholeLine } from '@/lib/lyricMotion';
 import { FONT_PRESETS, PRESET_BACKGROUNDS, PRESET_TEXT_COLORS, colors, fontFamilyFor } from '@/theme';
+import { useT } from '@/store/locale';
 import { useProjectStore } from '@/store/project';
+import type { LyricAnimationId } from '@/types';
+
+const ALIGN_KEYS = {
+  left: 'style.alignLeft',
+  center: 'style.alignCenter',
+  right: 'style.alignRight',
+} as const;
+
+const ANIM_KEYS: Record<LyricAnimationId, TranslationKey> = {
+  none: 'style.animNone',
+  fade: 'style.animFade',
+  rise: 'style.animRise',
+  drop: 'style.animDrop',
+  pop: 'style.animPop',
+  slide: 'style.animSlide',
+  zoom: 'style.animZoom',
+};
+
+const BG_KEYS: Record<string, TranslationKey> = {
+  None: 'style.bgNone',
+  Dim: 'style.bgDim',
+  Solid: 'style.bgSolid',
+  Light: 'style.bgLight',
+};
 
 export function StylePanel() {
+  const t = useT();
   const style = useProjectStore((s) => s.style);
   const setStyle = useProjectStore((s) => s.setStyle);
 
   return (
     <View style={styles.col}>
-      <SectionLabel>Fonts</SectionLabel>
+      <SectionLabel>{t('style.fonts')}</SectionLabel>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.fonts}>
         {FONT_PRESETS.map((font) => {
           const resolved = fontFamilyFor(font.id);
@@ -22,14 +50,49 @@ export function StylePanel() {
               key={font.id}
               onPress={() => setStyle({ fontFamily: font.id })}
               style={[styles.fontCard, selected && styles.fontCardOn]}>
-              <Text style={[styles.fontSample, family ? { fontFamily: family } : null]}>Lyric</Text>
+              <Text style={[styles.fontSample, family ? { fontFamily: family } : null]}>{t('style.sample')}</Text>
               <Text style={[styles.fontName, selected && styles.fontNameOn]}>{font.label}</Text>
             </Pressable>
           );
         })}
       </ScrollView>
 
-      <SectionLabel>Text</SectionLabel>
+      <SectionLabel>{t('style.animation')}</SectionLabel>
+      <ScrollView horizontal showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.fonts}>
+        {ANIMATION_PRESETS.map((item) => {
+          const selected = (style.animation ?? 'rise') === item.id;
+          return (
+            <Pressable
+              key={item.id}
+              onPress={() => setStyle({ animation: item.id })}
+              style={[styles.fontCard, selected && styles.fontCardOn]}>
+              <Text style={[styles.fontSample, styles.animMark]}>{item.mark}</Text>
+              <Text style={[styles.fontName, selected && styles.fontNameOn]}>{t(ANIM_KEYS[item.id])}</Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+
+      {animatesWholeLine(style.animation) ? (
+        <View style={styles.split}>
+          <Text style={styles.meta}>
+            {t('style.animSpeed', { speed: (style.animationSpeed ?? 1).toFixed(1) })}
+          </Text>
+          <Slider
+            style={styles.slider}
+            minimumValue={ANIMATION_SPEED_MIN}
+            maximumValue={ANIMATION_SPEED_MAX}
+            step={0.1}
+            value={style.animationSpeed ?? 1}
+            minimumTrackTintColor={colors.accent}
+            maximumTrackTintColor={colors.border}
+            thumbTintColor={colors.text}
+            onValueChange={(animationSpeed) => setStyle({ animationSpeed })}
+          />
+        </View>
+      ) : null}
+
+      <SectionLabel>{t('style.text')}</SectionLabel>
       <View style={styles.row}>
         {PRESET_TEXT_COLORS.map((color) => (
           <Pressable
@@ -45,7 +108,7 @@ export function StylePanel() {
       </View>
 
       <View style={styles.split}>
-        <Text style={styles.meta}>Size {Math.round(style.fontSize)}</Text>
+        <Text style={styles.meta}>{t('style.size', { size: Math.round(style.fontSize) })}</Text>
         <Slider
           style={styles.slider}
           minimumValue={16}
@@ -58,24 +121,24 @@ export function StylePanel() {
         />
       </View>
 
-      <SectionLabel>Background</SectionLabel>
+      <SectionLabel>{t('style.background')}</SectionLabel>
       <View style={styles.wrap}>
         {PRESET_BACKGROUNDS.map((item) => (
           <Chip
             key={item.label}
-            label={item.label}
+            label={t(BG_KEYS[item.label] ?? 'style.bgNone')}
             selected={style.backgroundColor === item.value}
             onPress={() => setStyle({ backgroundColor: item.value })}
           />
         ))}
       </View>
 
-      <SectionLabel>Align</SectionLabel>
+      <SectionLabel>{t('style.align')}</SectionLabel>
       <View style={styles.wrap}>
         {(['left', 'center', 'right'] as const).map((align) => (
           <Chip
             key={align}
-            label={align}
+            label={t(ALIGN_KEYS[align])}
             selected={style.align === align}
             onPress={() => setStyle({ align })}
           />
@@ -83,11 +146,11 @@ export function StylePanel() {
       </View>
 
       <View style={styles.toggles}>
-        <Toggle label="Bold" value={style.bold} onValueChange={(bold) => setStyle({ bold })} />
-        <Toggle label="Italic" value={style.italic} onValueChange={(italic) => setStyle({ italic })} />
-        <Toggle label="Outline" value={style.outline} onValueChange={(outline) => setStyle({ outline })} />
+        <Toggle label={t('style.bold')} value={style.bold} onValueChange={(bold) => setStyle({ bold })} />
+        <Toggle label={t('style.italic')} value={style.italic} onValueChange={(italic) => setStyle({ italic })} />
+        <Toggle label={t('style.outline')} value={style.outline} onValueChange={(outline) => setStyle({ outline })} />
       </View>
-      <Text style={styles.hint}>Drag the lyric box on the video to reposition it.</Text>
+      <Text style={styles.hint}>{t('style.hint')}</Text>
     </View>
   );
 }
@@ -149,6 +212,10 @@ const styles = StyleSheet.create({
   },
   fontNameOn: {
     color: colors.text,
+  },
+  animMark: {
+    fontSize: 22,
+    fontWeight: '700',
   },
   row: {
     flexDirection: 'row',

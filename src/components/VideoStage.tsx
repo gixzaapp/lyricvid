@@ -1,12 +1,13 @@
 import { useEvent, useEventListener } from 'expo';
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { forwardRef, useEffect, useImperativeHandle } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { LyricOverlay } from '@/components/LyricOverlay';
 import { PlaybackBar } from '@/components/PlaybackBar';
-import { getActiveLineIndex, getVisibleLineWords } from '@/lib/lyrics';
+import { getActiveLineIndex, getVisibleLineWords, lineEndTime } from '@/lib/lyrics';
+import { useT } from '@/store/locale';
 import { useProjectStore } from '@/store/project';
 import { colors } from '@/theme';
 
@@ -24,6 +25,7 @@ export const VideoStage = forwardRef<VideoStageHandle, Props>(function VideoStag
   { currentTime, onCurrentTime, compact = false },
   ref,
 ) {
+  const t = useT();
   const videoUri = useProjectStore((s) => s.videoUri);
   const audioUri = useProjectStore((s) => s.audioUri);
   const keepOriginalAudio = useProjectStore((s) => s.keepOriginalAudio);
@@ -37,19 +39,46 @@ export const VideoStage = forwardRef<VideoStageHandle, Props>(function VideoStag
   const setStageWidth = useProjectStore((s) => s.setStageWidth);
 
   const replaceAudio = !keepOriginalAudio && Boolean(audioUri);
-  const videoPlayer = useVideoPlayer(videoUri ? { uri: videoUri } : null, (player) => {
+  const videoSource = useMemo(() => (videoUri ? { uri: videoUri } : null), [videoUri]);
+  const videoPlayer = useVideoPlayer(videoSource, (player) => {
     player.timeUpdateEventInterval = 0.08;
     player.loop = false;
   });
   const audioPlayer = useAudioPlayer(replaceAudio && audioUri ? { uri: audioUri } : null);
   const audioStatus = useAudioPlayerStatus(audioPlayer);
-  const videoEnd = videoPlayer.duration > 0 ? videoPlayer.duration : videoDuration;
+  const nativeDuration = videoPlayer.duration > 0 ? videoPlayer.duration : 0;
+  const videoEnd = nativeDuration > 0 ? nativeDuration : videoDuration;
+  const pendingPlay = useRef(false);
 
   const { isPlaying } = useEvent(videoPlayer, 'playingChange', {
     isPlaying: videoPlayer.playing,
   });
 
+  const startPlayback = () => {
+    pendingPlay.current = true;
+    const end = nativeDuration > 0 ? nativeDuration : videoEnd;
+    try {
+      if (end > 0 && videoPlayer.currentTime >= end - 0.2) {
+        videoPlayer.currentTime = 0;
+        onCurrentTime(0);
+      }
+    } catch {
+      try {
+        videoPlayer.seekBy(-videoPlayer.currentTime);
+        onCurrentTime(0);
+      } catch {
+        // Player is still attaching the first frame.
+      }
+    }
+    if (replaceAudio) {
+      void audioPlayer.seekTo(Math.max(0, videoPlayer.currentTime || 0));
+      audioPlayer.play();
+    }
+    videoPlayer.play();
+  };
+
   const stopAtVideoEnd = (time: number) => {
+    pendingPlay.current = false;
     videoPlayer.pause();
     videoPlayer.loop = false;
     if (replaceAudio) audioPlayer.pause();
@@ -57,8 +86,9 @@ export const VideoStage = forwardRef<VideoStageHandle, Props>(function VideoStag
   };
 
   useEventListener(videoPlayer, 'timeUpdate', ({ currentTime: time }) => {
-    if (videoEnd > 0 && time >= videoEnd - 0.05) {
-      stopAtVideoEnd(videoEnd);
+    const end = nativeDuration > 0 ? nativeDuration : 0;
+    if (end > 0 && time >= end - 0.05) {
+      stopAtVideoEnd(end);
       return;
     }
     onCurrentTime(time);
@@ -72,9 +102,14 @@ export const VideoStage = forwardRef<VideoStageHandle, Props>(function VideoStag
   });
 
   useEventListener(videoPlayer, 'statusChange', ({ status }) => {
-    if (status === 'readyToPlay' && videoPlayer.duration > 0) {
-      setVideoDuration(videoPlayer.duration);
+    if (status === 'readyToPlay') {
+      if (videoPlayer.duration > 0) {
+        setVideoDuration(videoPlayer.duration);
+      }
       videoPlayer.loop = false;
+      if (pendingPlay.current && !videoPlayer.playing) {
+        videoPlayer.play();
+      }
     }
   });
 
@@ -107,9 +142,16 @@ export const VideoStage = forwardRef<VideoStageHandle, Props>(function VideoStag
   const visibleLine = getVisibleLineWords(lyrics, currentTime, offset, duration);
   const activeIndex = getActiveLineIndex(lyrics, currentTime, offset);
   const lineKey = lyrics.length === 0 ? 'placeholder' : activeIndex >= 0 ? lyrics[activeIndex].id : 'hidden';
+  const lineStart = activeIndex >= 0 ? Math.max(0, lyrics[activeIndex].timestamp + offset) : 0;
+  const lineEnd = activeIndex >= 0 ? lineEndTime(lyrics, activeIndex, duration, offset) : 0;
+  const nextStart = activeIndex >= 0 && lyrics[activeIndex + 1] ? lyrics[activeIndex + 1].timestamp + offset : null;
+  const fadeOut =
+    lineKey !== 'hidden' &&
+    lineKey !== 'placeholder' &&
+    (nextStart == null || nextStart > lineEnd + 0.04);
 
   const seekTo = (time: number) => {
-    const end = videoEnd;
+    const end = nativeDuration > 0 ? nativeDuration : videoEnd;
     const next = Math.max(0, end > 0 ? Math.min(time, Math.max(end - 0.05, 0)) : time);
     try {
       videoPlayer.currentTime = next;
@@ -123,20 +165,25 @@ export const VideoStage = forwardRef<VideoStageHandle, Props>(function VideoStag
   };
 
   const toggle = () => {
-    if (isPlaying) {
+    if (videoPlayer.playing || isPlaying) {
+      pendingPlay.current = false;
       videoPlayer.pause();
       if (replaceAudio) audioPlayer.pause();
       return;
     }
-    const end = videoEnd;
-    if (end > 0 && videoPlayer.currentTime >= end - 0.2) {
-      seekTo(0);
-    }
-    if (replaceAudio) {
-      void audioPlayer.seekTo(videoPlayer.currentTime);
-      audioPlayer.play();
-    }
-    videoPlayer.play();
+    startPlayback();
+    const uri = videoUri;
+    setTimeout(() => {
+      if (!pendingPlay.current || videoPlayer.playing || !uri) {
+        return;
+      }
+      void videoPlayer.replaceAsync({ uri }).then(() => {
+        if (!pendingPlay.current) return;
+        videoPlayer.timeUpdateEventInterval = 0.08;
+        videoPlayer.loop = false;
+        videoPlayer.play();
+      });
+    }, 280);
   };
 
   useImperativeHandle(ref, () => ({ seek: seekTo }), [replaceAudio, audioPlayer, videoPlayer, videoDuration]);
@@ -158,7 +205,11 @@ export const VideoStage = forwardRef<VideoStageHandle, Props>(function VideoStag
           words={visibleLine.words}
           currentIndex={visibleLine.currentIndex}
           lineKey={lineKey}
-          placeholder={lyrics.length ? undefined : 'Search a song to overlay lyrics'}
+          currentTime={currentTime}
+          lineStart={lineStart}
+          lineEnd={lineEnd}
+          fadeOut={fadeOut}
+          placeholder={lyrics.length ? undefined : t('stage.placeholder')}
           styleConfig={style}
           onPositionChange={setPosition}
         />

@@ -14,6 +14,8 @@ import { SplitLineModal } from '@/components/SplitLineModal';
 import { Button, Helper, SectionLabel } from '@/components/ui';
 import { createLineId, parsePlainLyrics, parseSyncedLyrics, tokensForLine } from '@/lib/lyrics';
 import { formatTimestampInput, parseTimestampInput } from '@/lib/time';
+import { isTranslationKey } from '@/i18n';
+import { useT } from '@/store/locale';
 import { useProjectStore } from '@/store/project';
 import { colors } from '@/theme';
 
@@ -24,6 +26,7 @@ type Props = {
 };
 
 export function LyricsPanel({ currentTime, onSeek, onInputFocus }: Props) {
+  const t = useT();
   const track = useProjectStore((s) => s.track);
   const lyrics = useProjectStore((s) => s.lyrics);
   const warning = useProjectStore((s) => s.lyricsWarning);
@@ -67,28 +70,28 @@ export function LyricsPanel({ currentTime, onSeek, onInputFocus }: Props) {
     setLyrics(
       parsePlainLyrics(raw, trackDuration),
       false,
-      'Pasted as unsynced lyrics. Timestamps follow the song, not the video length.',
+      'lyrics.warningPaste',
     );
     setPaste('');
   };
 
   return (
     <View style={styles.col}>
-      <SectionLabel>Song</SectionLabel>
+      <SectionLabel>{t('lyrics.song')}</SectionLabel>
       <Text style={styles.song}>
-        {track ? `${track.artistName} — ${track.trackName}` : 'No song selected'}
+        {track ? `${track.artistName} — ${track.trackName}` : t('lyrics.noSong')}
       </Text>
       <View style={styles.row}>
-        <Button compact label="Search lyrics" onPress={() => setSearchOpen(true)} style={styles.flex} />
-        <Button compact variant="secondary" label="Add line" onPress={() => addLine(currentTime)} />
+        <Button compact label={t('lyrics.search')} onPress={() => setSearchOpen(true)} style={styles.flex} />
+        <Button compact variant="secondary" label={t('lyrics.addLine')} onPress={() => addLine(currentTime)} />
       </View>
-      {warning ? <Helper tone="warning">{warning}</Helper> : null}
-      {lyricsSynced ? <Helper tone="success">Full synced lyrics loaded. Tap a line to jump there.</Helper> : null}
+      {warning ? (
+        <Helper tone="warning">{isTranslationKey(warning) ? t(warning) : warning}</Helper>
+      ) : null}
+      {lyricsSynced ? <Helper tone="success">{t('lyrics.synced')}</Helper> : null}
       {videoDuration > 0 && lyrics.some((line) => line.timestamp > videoDuration)
         ? (
-          <Helper>
-            Showing the whole song. Preview and export stop at the video end; later lines stay in the list for editing.
-          </Helper>
+          <Helper>{t('lyrics.beyondVideo')}</Helper>
         )
         : null}
 
@@ -118,16 +121,16 @@ export function LyricsPanel({ currentTime, onSeek, onInputFocus }: Props) {
             onChangeText={(text) => updateLine(line.id, { text })}
             onFocus={() => onInputFocus?.(lineOffsets.current[line.id] ?? index * 56)}
             style={styles.text}
-            placeholder="Lyric line"
+              placeholder={t('lyrics.placeholder')}
             placeholderTextColor={colors.muted}
             multiline
           />
           <View style={styles.actions}>
             <Pressable
-              accessibilityLabel="Split this line"
+              accessibilityLabel={t('lyrics.splitA11y')}
               onPress={() => {
                 if (tokensForLine(line).length < 2) {
-                  Alert.alert('Cannot split', 'This line needs at least two words.');
+                  Alert.alert(t('lyrics.cannotSplitTitle'), t('lyrics.cannotSplitBody'));
                   return;
                 }
                 setSplitId(line.id);
@@ -135,25 +138,25 @@ export function LyricsPanel({ currentTime, onSeek, onInputFocus }: Props) {
               <Ionicons name="create-outline" size={18} color={colors.accent} />
             </Pressable>
             <Pressable
-              accessibilityLabel="Start from this line"
+              accessibilityLabel={t('lyrics.startFromA11y')}
               onPress={() =>
                 Alert.alert(
-                  'Start from this',
-                  'Delete every line above this one and shift times so it starts at 00:00.00.',
+                  t('lyrics.startFromTitle'),
+                  t('lyrics.startFromBody'),
                   [
-                    { text: 'Cancel', style: 'cancel' },
-                    { text: 'Continue', onPress: () => startFromLine(line.id) },
+                    { text: t('common.cancel'), style: 'cancel' },
+                    { text: t('common.continue'), onPress: () => startFromLine(line.id) },
                   ],
                 )
               }>
               <Ionicons name="cut-outline" size={18} color={colors.accent} />
             </Pressable>
             <Pressable
-              accessibilityLabel="Remove line"
+              accessibilityLabel={t('lyrics.removeA11y')}
               onPress={() =>
-                Alert.alert('Remove line?', undefined, [
-                  { text: 'Cancel', style: 'cancel' },
-                  { text: 'Remove', style: 'destructive', onPress: () => removeLine(line.id) },
+                Alert.alert(t('lyrics.removeTitle'), undefined, [
+                  { text: t('common.cancel'), style: 'cancel' },
+                  { text: t('lyrics.remove'), style: 'destructive', onPress: () => removeLine(line.id) },
                 ])
               }>
               <Text style={styles.remove}>✕</Text>
@@ -162,11 +165,11 @@ export function LyricsPanel({ currentTime, onSeek, onInputFocus }: Props) {
         </View>
       ))}
 
-      <SectionLabel>Paste lyrics</SectionLabel>
+      <SectionLabel>{t('lyrics.pasteLabel')}</SectionLabel>
       <TextInput
         value={paste}
         onChangeText={setPaste}
-        placeholder="Paste LRC or plain lyrics in any language"
+        placeholder={t('lyrics.pastePlaceholder')}
         placeholderTextColor={colors.muted}
         style={styles.paste}
         multiline
@@ -174,14 +177,14 @@ export function LyricsPanel({ currentTime, onSeek, onInputFocus }: Props) {
       <Button
         compact
         variant="secondary"
-        label="Use pasted lyrics"
+        label={t('lyrics.usePaste')}
         onPress={applyPaste}
         disabled={!paste.trim()}
       />
       <Button
         compact
         variant="ghost"
-        label="Start from a blank line"
+        label={t('lyrics.blankLine')}
         onPress={() =>
           setLyrics([{ id: createLineId(), timestamp: currentTime, text: '' }], false, null)
         }

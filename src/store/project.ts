@@ -12,6 +12,8 @@ const defaultStyle: SubtitleStyle = {
   italic: false,
   outline: true,
   align: 'center',
+  animation: 'rise',
+  animationSpeed: 1,
   x: 50,
   y: 78,
 };

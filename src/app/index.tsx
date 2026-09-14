@@ -9,11 +9,13 @@ import { AppMenu } from '@/components/AppMenu';
 import { LandingBanner } from '@/components/LandingBanner';
 import { isAuddEnabled } from '@/lib/audd';
 import { pickFile, pickVideoFromLibrary } from '@/lib/media';
+import { errorText, useT } from '@/store/locale';
 import { useProjectStore } from '@/store/project';
 import { colors } from '@/theme';
 
 export default function HomeScreen() {
   const router = useRouter();
+  const t = useT();
   const setVideo = useProjectStore((s) => s.setVideo);
   const setPendingSongDetect = useProjectStore((s) => s.setPendingSongDetect);
   const videoUri = useProjectStore((s) => s.videoUri);
@@ -31,7 +33,7 @@ export default function HomeScreen() {
       setPendingSongDetect(isAuddEnabled());
       router.push('/editor');
     } catch (error) {
-      Alert.alert('Could not open video', error instanceof Error ? error.message : 'Unknown error');
+      Alert.alert(t('home.openError'), errorText(error, 'common.unknownError'));
     } finally {
       setBusy(false);
     }
@@ -65,9 +67,7 @@ export default function HomeScreen() {
             <Ionicons name="musical-notes" size={22} color={colors.accent} />
           </View>
           <Text style={styles.title}>AI LyricVid</Text>
-          <Text style={styles.subtitle}>
-            Pick a video, choose the song, and AI adds timed lyrics. Style the words, then export a finished video.
-          </Text>
+          <Text style={styles.subtitle}>{t('home.subtitle')}</Text>
 
           <View style={styles.preview}>
             <LinearGradient colors={['#2A2150', '#12101C', '#0B0B12']} style={styles.previewFill}>
@@ -89,9 +89,9 @@ export default function HomeScreen() {
             <Pressable onPress={() => router.push('/editor')} style={styles.continue}>
               <Ionicons name="play-circle" size={22} color={colors.accent} />
               <View style={styles.continueCopy}>
-                <Text style={styles.continueKicker}>Continue project</Text>
+                <Text style={styles.continueKicker}>{t('home.continue')}</Text>
                 <Text numberOfLines={1} style={styles.continueName}>
-                  {videoName ?? 'Current video'}
+                  {videoName ?? t('home.currentVideo')}
                 </Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color={colors.muted} />
@@ -103,7 +103,7 @@ export default function HomeScreen() {
             onPress={() => openVideo('library')}
             style={({ pressed }) => [styles.primary, busy && styles.disabled, pressed && !busy && styles.pressed]}>
             <Ionicons name="film-outline" size={20} color="#0B0B10" />
-            <Text style={styles.primaryLabel}>{busy ? 'Opening…' : 'Choose from library'}</Text>
+            <Text style={styles.primaryLabel}>{busy ? t('home.opening') : t('home.chooseLibrary')}</Text>
           </Pressable>
 
           <Pressable
@@ -111,7 +111,7 @@ export default function HomeScreen() {
             onPress={() => openVideo('files')}
             style={({ pressed }) => [styles.secondary, busy && styles.disabled, pressed && !busy && styles.pressed]}>
             <Ionicons name="folder-open-outline" size={20} color={colors.text} />
-            <Text style={styles.secondaryLabel}>Pick a video file</Text>
+            <Text style={styles.secondaryLabel}>{t('home.pickFile')}</Text>
           </Pressable>
         </View>
         <View style={styles.banner}>

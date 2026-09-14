@@ -12,6 +12,8 @@ export type LyricLine = {
 
 export type SubtitleAlign = 'left' | 'center' | 'right';
 
+export type LyricAnimationId = 'none' | 'fade' | 'rise' | 'drop' | 'pop' | 'slide' | 'zoom';
+
 export type SubtitleStyle = {
   fontFamily: string;
   fontSize: number;
@@ -21,6 +23,8 @@ export type SubtitleStyle = {
   italic: boolean;
   outline: boolean;
   align: SubtitleAlign;
+  animation: LyricAnimationId;
+  animationSpeed: number;
   x: number;
   y: number;
 };

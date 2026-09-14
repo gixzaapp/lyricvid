@@ -12,10 +12,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button, Helper } from '@/components/ui';
+import { isTranslationKey } from '@/i18n';
 import { isAuddEnabled } from '@/lib/audd';
 import { getLyricsById, searchLyrics } from '@/lib/lrclib';
 import { detectSongFromMedia } from '@/lib/songDetect';
 import { formatDurationLabel } from '@/lib/time';
+import { errorText, useT } from '@/store/locale';
 import { useProjectStore } from '@/store/project';
 import { colors } from '@/theme';
 import type { LrclibTrack } from '@/types';
@@ -27,6 +29,7 @@ type Props = {
 };
 
 export function SongSearchModal({ visible, currentTime, onClose }: Props) {
+  const t = useT();
   const applyTrack = useProjectStore((s) => s.applyTrack);
   const videoUri = useProjectStore((s) => s.videoUri);
   const audioUri = useProjectStore((s) => s.audioUri);
@@ -54,7 +57,7 @@ export function SongSearchModal({ visible, currentTime, onClose }: Props) {
         artistName,
       });
       if (found.length === 0) {
-        setError('No matches on LRCLIB. Try a different title or add the artist.');
+        setError('search.noMatches');
         return;
       }
       const ranked = [...found].sort((a, b) => {
@@ -63,9 +66,9 @@ export function SongSearchModal({ visible, currentTime, onClose }: Props) {
         return (b.duration || 0) - (a.duration || 0);
       });
       setResults(ranked);
-      setNotice('Pick the song. The editor will list its full lyrics, even if the video is shorter.');
+      setNotice('search.pickSong');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Search failed.');
+      setError(errorText(err, 'search.failed'));
     } finally {
       setBusy(null);
     }
@@ -73,7 +76,7 @@ export function SongSearchModal({ visible, currentTime, onClose }: Props) {
 
   const detect = async () => {
     if (!sourceUri) {
-      setError('Pick a video first, then detect the song from its audio.');
+      setError('search.detectNeedVideo');
       return;
     }
     setBusy('detect');
@@ -89,13 +92,13 @@ export function SongSearchModal({ visible, currentTime, onClose }: Props) {
       setTrackName(match.title);
       setArtistName(match.artist);
       if (tracks.length === 0) {
-        setError(`AudD found ${match.artist} — ${match.title}, but LRCLIB has no lyrics. Search with a different spelling, or paste lyrics.`);
+        setError(t('search.detectNoLyrics', { artist: match.artist, title: match.title }));
         return;
       }
       setResults(tracks);
-      setNotice(`Detected ${match.artist} — ${match.title}. Pick the lyrics below.`);
+      setNotice(t('search.detected', { artist: match.artist, title: match.title }));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Song detection failed.');
+      setError(errorText(err, 'search.detectFailed'));
     } finally {
       setBusy(null);
     }
@@ -109,7 +112,7 @@ export function SongSearchModal({ visible, currentTime, onClose }: Props) {
       applyTrack(full);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load lyrics.');
+      setError(errorText(err, 'search.loadFailed'));
     } finally {
       setBusy(null);
     }
@@ -119,13 +122,13 @@ export function SongSearchModal({ visible, currentTime, onClose }: Props) {
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView style={styles.safe}>
         <View style={styles.header}>
-          <Text style={styles.title}>Find lyrics</Text>
+          <Text style={styles.title}>{t('search.title')}</Text>
           <Pressable onPress={onClose}>
-            <Text style={styles.close}>Close</Text>
+            <Text style={styles.close}>{t('common.close')}</Text>
           </Pressable>
         </View>
         <TextInput
-          placeholder="Song name"
+          placeholder={t('search.songName')}
           placeholderTextColor={colors.muted}
           value={trackName}
           onChangeText={setTrackName}
@@ -135,7 +138,7 @@ export function SongSearchModal({ visible, currentTime, onClose }: Props) {
           onSubmitEditing={search}
         />
         <TextInput
-          placeholder="Artist (optional)"
+          placeholder={t('search.artist')}
           placeholderTextColor={colors.muted}
           value={artistName}
           onChangeText={setArtistName}
@@ -143,43 +146,45 @@ export function SongSearchModal({ visible, currentTime, onClose }: Props) {
           autoCapitalize="none"
         />
         <Button
-          label={busy === 'search' ? 'Searching…' : 'Search LRCLIB'}
+          label={busy === 'search' ? t('search.searching') : t('search.search')}
           onPress={search}
           disabled={busy != null || !trackName.trim()}
         />
         {canDetect ? (
           <Button
             variant="secondary"
-            label={busy === 'detect' ? 'Detecting…' : 'Detect from audio'}
+            label={busy === 'detect' ? t('search.detecting') : t('search.detect')}
             onPress={detect}
             disabled={busy != null || !sourceUri}
           />
         ) : null}
         {canDetect && !sourceUri ? (
-          <Helper>Pick a video first to detect the song from its soundtrack.</Helper>
+          <Helper>{t('search.needVideo')}</Helper>
         ) : null}
-        {error ? <Helper tone="warning">{error}</Helper> : null}
-        {notice ? <Helper>{notice}</Helper> : null}
+        {error ? (
+          <Helper tone="warning">{isTranslationKey(error) ? t(error) : error}</Helper>
+        ) : null}
+        {notice ? (
+          <Helper>{isTranslationKey(notice) ? t(notice) : notice}</Helper>
+        ) : null}
         {busy ? <ActivityIndicator color={colors.accent} style={{ marginTop: 16 }} /> : null}
         <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
           {results.map((item) => (
             <Pressable key={item.id} onPress={() => pick(item)} style={styles.result}>
-              <Text style={styles.track}>{item.trackName}</Text>
+              <Text style={styles.track}>{isTranslationKey(item.trackName) ? t(item.trackName) : item.trackName}</Text>
               <Text style={styles.meta}>
-                {item.artistName}
+                {isTranslationKey(item.artistName) ? t(item.artistName) : item.artistName}
                 {item.albumName ? ` · ${item.albumName}` : ''}
               </Text>
               <Text style={styles.meta}>
                 {formatDurationLabel(item.duration)}
-                {item.syncedLyrics ? ' · synced' : item.plainLyrics ? ' · unsynced' : ''}
+                {item.syncedLyrics ? ` · ${t('search.synced')}` : item.plainLyrics ? ` · ${t('search.unsynced')}` : ''}
               </Text>
             </Pressable>
           ))}
         </ScrollView>
         <Helper>
-          {canDetect
-            ? 'Detect sends a short audio clip to AudD, then loads lyrics from LRCLIB.'
-            : 'Lyrics via LRCLIB · any language, shown as published'}
+          {canDetect ? t('search.footerDetect') : t('search.footerLrc')}
         </Helper>
       </SafeAreaView>
     </Modal>

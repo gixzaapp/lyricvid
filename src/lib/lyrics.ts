@@ -219,7 +219,7 @@ export function parseLyricsfile(yaml: string): LyricLine[] | null {
 
 export function lyricsFromTrack(track: LrclibTrack, duration: number) {
   if (track.instrumental) {
-    return { lyrics: [] as LyricLine[], synced: false, warning: 'This track is marked instrumental.' };
+    return { lyrics: [] as LyricLine[], synced: false, warning: 'lyrics.warningInstrumental' };
   }
 
   const fromFile = track.lyricsfile ? parseLyricsfile(track.lyricsfile) : null;
@@ -239,10 +239,10 @@ export function lyricsFromTrack(track: LrclibTrack, duration: number) {
     return {
       lyrics: parsePlainLyrics(track.plainLyrics, duration),
       synced: false,
-      warning: 'Only unsynced lyrics were found. Timestamps were spread evenly — adjust them in the list.',
+      warning: 'lyrics.warningUnsynced',
     };
   }
-  return { lyrics: [] as LyricLine[], synced: false, warning: 'No lyrics were attached to this result.' };
+  return { lyrics: [] as LyricLine[], synced: false, warning: 'lyrics.warningNone' };
 }
 
 export function rankTracksByDuration(tracks: LrclibTrack[], duration: number): RankedTrack[] {

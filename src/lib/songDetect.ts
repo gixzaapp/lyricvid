@@ -37,9 +37,7 @@ async function extractClip(sourceUri: string, startSeconds: number, durationSeco
     return sourceUri;
   }
 
-  throw new Error(
-    'Song detection needs the AI LyricVid app build so it can cut a short audio clip. Expo Go cannot do this.',
-  );
+  throw new Error('detect.needsBuild');
 }
 
 export async function detectSongFromMedia(input: {
@@ -54,7 +52,7 @@ export async function detectSongFromMedia(input: {
   try {
     const match = await recognizeWithAudd(clipUri);
     if (!match) {
-      throw new Error('AudD did not recognize this clip. Try another point in the video, or search by name.');
+      throw new Error('detect.unrecognized');
     }
 
     const found = await searchLyrics({

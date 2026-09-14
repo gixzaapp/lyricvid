@@ -13,7 +13,7 @@ export type PickedMedia = {
 export async function pickVideoFromLibrary(): Promise<PickedMedia | null> {
   const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!permission.granted) {
-    throw new Error('Photo library permission is required to pick a video.');
+    throw new Error('media.photoPermission');
   }
 
   const result = await ImagePicker.launchImageLibraryAsync({

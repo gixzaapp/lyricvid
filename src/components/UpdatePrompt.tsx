@@ -2,15 +2,18 @@ import { useEffect, useState } from 'react';
 import { Modal, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/ui';
+import { isTranslationKey } from '@/i18n';
 import {
   checkAppUpdate,
   dismissOptionalUpdate,
   openStoreListing,
   type AppUpdateStatus,
 } from '@/lib/appUpdate';
+import { useT } from '@/store/locale';
 import { colors } from '@/theme';
 
 export function UpdatePrompt() {
+  const t = useT();
   const [update, setUpdate] = useState<AppUpdateStatus | null>(null);
 
   useEffect(() => {
@@ -42,13 +45,13 @@ export function UpdatePrompt() {
     <Modal visible transparent animationType="fade" onRequestClose={update.required ? undefined : later}>
       <View style={styles.backdrop}>
         <View style={styles.card}>
-          <Text style={styles.kicker}>{update.required ? 'Update required' : 'Update available'}</Text>
-          <Text style={styles.title}>Version {update.latest} is ready</Text>
-          <Text style={styles.copy}>{update.message}</Text>
-          <Text style={styles.meta}>You have {update.installed}</Text>
-          <Button label="Update" onPress={openStore} />
+          <Text style={styles.kicker}>{update.required ? t('about.updateRequired') : t('about.updateAvailable')}</Text>
+          <Text style={styles.title}>{t('update.title', { version: update.latest })}</Text>
+          <Text style={styles.copy}>{isTranslationKey(update.message) ? t(update.message) : update.message}</Text>
+          <Text style={styles.meta}>{t('update.youHave', { version: update.installed })}</Text>
+          <Button label={t('about.update')} onPress={openStore} />
           {update.required ? null : (
-            <Button label="Later" variant="secondary" onPress={later} />
+            <Button label={t('about.later')} variant="secondary" onPress={later} />
           )}
         </View>
       </View>

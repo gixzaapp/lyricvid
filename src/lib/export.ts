@@ -145,7 +145,7 @@ export function exportCues(lyrics: LyricLine[], offset: number, duration: number
       duration > 0 ? Math.min(Math.max(lineEndRaw, lineStart + 0.12), duration) : Math.max(lineEndRaw, lineStart + 0.12);
 
     if (words.length === 0) {
-      return [{ start: lineStart, end: lineEnd, text, highlightStart: 0, highlightEnd: 0 }];
+      return [{ start: lineStart, end: lineEnd, text, lineId: line.id, highlightStart: 0, highlightEnd: 0 }];
     }
 
     return words.flatMap((word, index) => {
@@ -163,6 +163,7 @@ export function exportCues(lyrics: LyricLine[], offset: number, duration: number
           start,
           end,
           text,
+          lineId: line.id,
           highlightStart: range.start,
           highlightEnd: range.end,
         },
@@ -177,7 +178,7 @@ function isLocalFileUri(uri: string) {
 
 function sandboxExportsDir() {
   if (!cacheDirectory) {
-    throw new Error('App storage is not available on this device.');
+    throw new Error('export.noStorage');
   }
   return `${cacheDirectory}exports/`;
 }
@@ -207,7 +208,7 @@ async function ensureLocalMedia(uri: string, filename: string) {
   await copyAsync({ from: uri, to: dest });
   const copied = await getInfoAsync(dest);
   if (!copied.exists) {
-    throw new Error('Could not copy the video into app storage for export.');
+    throw new Error('export.copyFailed');
   }
   return dest;
 }
@@ -227,7 +228,7 @@ async function presentFile(uri: string, filename: string, mimeType: string) {
     });
     return;
   }
-  throw new Error('Sharing is not available on this device.');
+  throw new Error('export.shareUnavailable');
 }
 
 async function presentText(filename: string, contents: string, mimeType: string) {
@@ -247,7 +248,7 @@ export async function writeAndShareFile(filename: string, contents: string, mime
 
 export async function shareVideo(uri: string, filename: string) {
   if (!isLocalFileUri(uri)) {
-    throw new Error('This video is already on your device. Save the subtitle files and name them to match the video.');
+    throw new Error('export.alreadyOnDevice');
   }
   await presentFile(uri, filename, 'video/mp4');
   return uri;
@@ -308,9 +309,7 @@ export async function exportFinalVideo(input: {
   onProgress?: (progress: number) => void;
 }) {
   if (!nativeExport) {
-    throw new Error(
-      'Finished video export needs the AI LyricVid app build. Expo Go cannot burn lyrics into an MP4. Open the AI LyricVid app installed from the Android/iOS build, then export again.',
-    );
+    throw new Error('export.needsBuild');
   }
 
   const filename = `${input.stem}-lyricvid.mp4`;
@@ -361,12 +360,14 @@ export async function exportFinalVideo(input: {
       align: input.style.align,
       x: input.style.x,
       y: input.style.y,
+      animation: input.style.animation ?? 'rise',
+      animationSpeed: input.style.animationSpeed ?? 1,
       cues: exportCues(input.lyrics, input.offset, input.duration),
     });
     report(0.92);
   } catch (error) {
     if (isHiResAudioError(error)) {
-      throw Object.assign(new Error(HIRES_AUDIO_MESSAGE), { code: 'HIRES_AUDIO' });
+      throw Object.assign(new Error('export.hiresBody'), { code: 'HIRES_AUDIO' });
     }
     throw error;
   } finally {
@@ -375,7 +376,7 @@ export async function exportFinalVideo(input: {
   }
 
   if (!uri) {
-    throw new Error('The exported video was empty.');
+    throw new Error('export.empty');
   }
 
   report(0.95);

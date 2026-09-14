@@ -4,10 +4,21 @@ import { useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { translate, type TranslationKey } from '@/i18n';
+import { useLocaleStore, useT } from '@/store/locale';
 import { colors } from '@/theme';
+
+function bilingualLabel(code: string | null, key: TranslationKey) {
+  const localized = translate(code, key);
+  const english = translate('en', key);
+  if (!code || code === 'en' || localized === english) return localized;
+  return `${localized} (${english})`;
+}
 
 export function AppMenu() {
   const router = useRouter();
+  const t = useT();
+  const code = useLocaleStore((s) => s.code);
   const [open, setOpen] = useState(false);
 
   const close = () => setOpen(false);
@@ -16,7 +27,7 @@ export function AppMenu() {
     <>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Open menu"
+        accessibilityLabel={t('menu.open')}
         onPress={() => setOpen(true)}
         style={styles.iconBtn}>
         <Ionicons name="menu" size={26} color={colors.text} />
@@ -30,10 +41,19 @@ export function AppMenu() {
               style={styles.item}
               onPress={() => {
                 close();
+                router.push('/language');
+              }}>
+              <Ionicons name="globe-outline" size={20} color={colors.text} />
+              <Text style={styles.itemLabel}>{bilingualLabel(code, 'menu.language')}</Text>
+            </Pressable>
+            <Pressable
+              style={styles.item}
+              onPress={() => {
+                close();
                 router.push('/about');
               }}>
               <Ionicons name="information-circle-outline" size={20} color={colors.text} />
-              <Text style={styles.itemLabel}>About</Text>
+              <Text style={styles.itemLabel}>{t('menu.about')}</Text>
             </Pressable>
           </SafeAreaView>
         </View>

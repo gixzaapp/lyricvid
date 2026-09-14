@@ -1,3 +1,5 @@
+import { keyedError } from '@/i18n';
+
 export type AuddMatch = {
   title: string;
   artist: string;
@@ -52,7 +54,7 @@ export function isAuddEnabled() {
 export async function recognizeWithAudd(fileUri: string): Promise<AuddMatch | null> {
   const token = getAuddApiToken().trim();
   if (!token) {
-    throw new Error('Set EXPO_PUBLIC_AUDD_API_TOKEN in .env to enable song detection.');
+    throw new Error('detect.noToken');
   }
 
   const form = new FormData();
@@ -72,11 +74,11 @@ export async function recognizeWithAudd(fileUri: string): Promise<AuddMatch | nu
   try {
     payload = (await response.json()) as AuddResponse;
   } catch {
-    throw new Error('AudD returned an invalid response.');
+    throw new Error('detect.invalidResponse');
   }
 
   if (payload.status === 'error' || payload.error) {
-    throw new Error(payload.error?.error_message || `AudD request failed (${response.status}).`);
+    throw keyedError('detect.requestFailed', { status: response.status });
   }
 
   const raw = Array.isArray(payload.result) ? payload.result[0] : payload.result;
