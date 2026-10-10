@@ -262,6 +262,25 @@ export function autoSelectTrack(ranked: RankedTrack[]) {
   return null;
 }
 
+export function wheelPosition(
+  lyrics: LyricLine[],
+  time: number,
+  offset: number,
+  duration: number,
+) {
+  const index = getActiveLineIndex(lyrics, time, offset);
+  if (index < 0) {
+    return { index: -1, slide: 0, position: -1 };
+  }
+  const start = Math.max(0, lyrics[index].timestamp + offset);
+  const end = lineEndTime(lyrics, index, duration, offset);
+  const span = Math.max(end - start, 0.12);
+  const progress = Math.min(1, Math.max(0, (time - start) / span));
+  const hold = 0.62;
+  const slide = progress <= hold ? 0 : (progress - hold) / (1 - hold);
+  return { index, slide, position: index + slide };
+}
+
 export function getActiveLineIndex(lyrics: LyricLine[], time: number, offset: number) {
   const cursor = time - offset;
   let active = -1;

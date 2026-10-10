@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreVideo
 import ExpoModulesCore
 import UIKit
 
@@ -6,8 +7,19 @@ struct LyricCue: Record {
   @Field var start: Double = 0
   @Field var end: Double = 0
   @Field var text: String = ""
+  @Field var lineId: String = ""
   @Field var highlightStart: Int = 0
   @Field var highlightEnd: Int = 0
+}
+
+struct ExportSticker: Record {
+  @Field var kind: String = "vinyl"
+  @Field var x: Double = 20
+  @Field var y: Double = 18
+  @Field var scale: Double = 1
+  @Field var title: String = "Song"
+  @Field var artist: String = "Artist"
+  @Field var duration: Double = 0
 }
 
 struct ExportOptions: Record {
@@ -15,6 +27,8 @@ struct ExportOptions: Record {
   @Field var audioUri: String?
   @Field var replaceAudio: Bool = false
   @Field var outputPath: String = ""
+  @Field var duration: Double = 0
+  @Field var stillImage: Bool = false
   @Field var fontSize: Double = 28
   @Field var fontFamily: String = "sans"
   @Field var previewWidth: Double = 360
@@ -27,7 +41,10 @@ struct ExportOptions: Record {
   @Field var align: String = "center"
   @Field var x: Double = 50
   @Field var y: Double = 78
+  @Field var animation: String = "rise"
+  @Field var animationSpeed: Double = 1
   @Field var cues: [LyricCue] = []
+  @Field var stickers: [ExportSticker] = []
 }
 
 public class VideoLyricExportModule: Module {
@@ -59,6 +76,14 @@ public class VideoLyricExportModule: Module {
   }
 
   private func export(_ options: ExportOptions) throws -> String {
+    if options.stillImage {
+      let stillUri = try writeStillVideo(options)
+      var videoOptions = options
+      videoOptions.videoUri = stillUri
+      videoOptions.stillImage = false
+      return try export(videoOptions)
+    }
+
     let videoURL = url(from: options.videoUri)
     let asset = AVURLAsset(url: videoURL)
     let composition = AVMutableComposition()
@@ -103,6 +128,9 @@ public class VideoLyricExportModule: Module {
     let maxWidth = width * 0.92
     let center = CGPoint(x: width * options.x / 100, y: height * (1 - options.y / 100))
 
+    if options.animation == "wheel" {
+      addWheelLayers(options: options, parent: parent, center: center, width: width, fontSize: fontSize, duration: CMTimeGetSeconds(duration))
+    } else {
     for cue in options.cues {
       let styled = attributed(cue, options: options, fontSize: fontSize, maxWidth: maxWidth)
       let bounds = styled.boundingRect(
@@ -139,6 +167,9 @@ public class VideoLyricExportModule: Module {
       layer.add(animation, forKey: "show")
       parent.addSublayer(layer)
     }
+    }
+
+    addStickerLayers(options.stickers, parent: parent, size: renderSize, scale: textScale, duration: options.duration > 0 ? options.duration : CMTimeGetSeconds(duration))
 
     let instruction = AVMutableVideoCompositionInstruction()
     instruction.timeRange = CMTimeRange(start: .zero, duration: duration)
@@ -270,6 +301,370 @@ public class VideoLyricExportModule: Module {
     }
   }
 
+  private func addWheelLayers(
+    options: ExportOptions,
+    parent: CALayer,
+    center: CGPoint,
+    width: CGFloat,
+    fontSize: Double,
+    duration: Double
+  ) {
+    let lines = wheelLines(options.cues)
+    guard !lines.isEmpty else { return }
+    let rowH = max(28, CGFloat(fontSize) * 1.35)
+    let boxW = min(width * 0.88, 520)
+    let boxH = rowH * 5 + 16
+    let root = CALayer()
+    root.frame = CGRect(x: center.x - boxW / 2, y: center.y - boxH / 2, width: boxW, height: boxH)
+    root.cornerRadius = 16
+    root.masksToBounds = true
+    if let background = options.backgroundColor, let color = cssColor(background) {
+      root.backgroundColor = color.cgColor
+    } else {
+      root.backgroundColor = UIColor(white: 0.05, alpha: 0.42).cgColor
+    }
+    let band = CALayer()
+    band.frame = CGRect(x: 0, y: (boxH - rowH) / 2, width: boxW, height: rowH)
+    band.backgroundColor = UIColor(white: 1, alpha: 0.12).cgColor
+    root.addSublayer(band)
+
+    for (index, line) in lines.enumerated() {
+      let layer = CATextLayer()
+      layer.contentsScale = 2
+      layer.alignmentMode = alignment(options.align)
+      layer.isWrapped = false
+      layer.string = line.text
+      layer.fontSize = fontSize
+      layer.foregroundColor = (cssColor(options.color) ?? .white).cgColor
+      layer.frame = CGRect(x: 10, y: (boxH - rowH) / 2, width: boxW - 20, height: rowH)
+      layer.opacity = 0
+      let times = wheelTimes(index: index, lines: lines, duration: duration)
+      let move = CAKeyframeAnimation(keyPath: "position.y")
+      move.values = times.map { $0.offset * rowH + boxH / 2 }
+      move.keyTimes = times.map { NSNumber(value: $0.time / max(duration, 0.01)) }
+      move.beginTime = AVCoreAnimationBeginTimeAtZero
+      move.duration = max(duration, 0.01)
+      move.fillMode = .forwards
+      move.isRemovedOnCompletion = false
+      let fade = CAKeyframeAnimation(keyPath: "opacity")
+      fade.values = times.map { max(0.18, 1 - abs($0.offset) * 0.38) }
+      fade.keyTimes = move.keyTimes
+      fade.beginTime = AVCoreAnimationBeginTimeAtZero
+      fade.duration = max(duration, 0.01)
+      fade.fillMode = .forwards
+      fade.isRemovedOnCompletion = false
+      layer.add(move, forKey: "roll")
+      layer.add(fade, forKey: "fade")
+      root.addSublayer(layer)
+    }
+    parent.addSublayer(root)
+  }
+
+  private struct WheelLine {
+    let id: String
+    let text: String
+    let start: Double
+    let end: Double
+  }
+
+  private func wheelLines(_ cues: [LyricCue]) -> [WheelLine] {
+    var lines: [WheelLine] = []
+    var index = 0
+    while index < cues.count {
+      let cue = cues[index]
+      if cue.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        index += 1
+        continue
+      }
+      let id = cue.lineId.isEmpty ? "\(index)-\(cue.text)" : cue.lineId
+      var last = index
+      while last + 1 < cues.count {
+        let nextId = cues[last + 1].lineId.isEmpty ? "\(last + 1)-\(cues[last + 1].text)" : cues[last + 1].lineId
+        if nextId != id { break }
+        last += 1
+      }
+      lines.append(WheelLine(id: id, text: cue.text, start: cue.start, end: cues[last].end))
+      index = last + 1
+    }
+    return lines
+  }
+
+  private func wheelTimes(index: Int, lines: [WheelLine], duration: Double) -> [(time: Double, offset: Double)] {
+    var points: [(time: Double, offset: Double)] = [(0, Double(index + 2))]
+    for (other, line) in lines.enumerated() {
+      points.append((line.start, Double(index - other)))
+    }
+    if let last = lines.last {
+      points.append((min(duration, last.end), Double(index - (lines.count - 1) - 1)))
+    }
+    return points.sorted { $0.time < $1.time }
+  }
+
+  private func addStickerLayers(_ stickers: [ExportSticker], parent: CALayer, size: CGSize, scale: CGFloat, duration: Double) {
+    for sticker in stickers {
+      let center = CGPoint(x: size.width * sticker.x / 100, y: size.height * (1 - sticker.y / 100))
+      let box = max(90, 120 * scale * CGFloat(sticker.scale))
+      let root = CALayer()
+      if sticker.kind == "beats" {
+        let wide = box * 1.7
+        let tall = box * 0.72
+        root.frame = CGRect(x: center.x - wide / 2, y: center.y - tall / 2, width: wide, height: tall)
+        addBeatsLayer(to: root, title: sticker.title)
+      } else if sticker.kind == "player" {
+        let wide = box * 2.2
+        let tall = box * 0.7
+        root.frame = CGRect(x: center.x - wide / 2, y: center.y - tall / 2, width: wide, height: tall)
+        addPlayerLayer(to: root, sticker: sticker, duration: duration)
+      } else {
+        root.frame = CGRect(x: center.x - box / 2, y: center.y - box / 2, width: box, height: box)
+        switch sticker.kind {
+        case "cassette":
+          addCassetteLayer(to: root, title: sticker.title, box: box)
+        case "music":
+          addMusicLayer(to: root, title: sticker.title, box: box)
+        default:
+          addVinylLayer(to: root, title: sticker.title, box: box)
+        }
+      }
+      parent.addSublayer(root)
+    }
+  }
+
+  private func addVinylLayer(to root: CALayer, title: String, box: CGFloat) {
+    let disc = CALayer()
+    disc.frame = CGRect(x: box * 0.08, y: 0, width: box * 0.84, height: box * 0.84)
+    disc.cornerRadius = disc.bounds.width / 2
+    disc.backgroundColor = UIColor(white: 0.07, alpha: 1).cgColor
+    disc.borderWidth = 4
+    disc.borderColor = UIColor(white: 0.17, alpha: 1).cgColor
+    let label = CATextLayer()
+    label.contentsScale = 2
+    label.alignmentMode = .center
+    label.isWrapped = true
+    label.string = title
+    label.fontSize = max(8, box * 0.07)
+    label.foregroundColor = UIColor(red: 1, green: 0.96, blue: 0.91, alpha: 1).cgColor
+    label.backgroundColor = UIColor(red: 0.77, green: 0.29, blue: 0.29, alpha: 1).cgColor
+    label.cornerRadius = box * 0.16
+    label.masksToBounds = true
+    label.frame = CGRect(x: box * 0.26, y: box * 0.26, width: box * 0.32, height: box * 0.32)
+    disc.addSublayer(label)
+    let spin = CABasicAnimation(keyPath: "transform.rotation.z")
+    spin.fromValue = 0
+    spin.toValue = Double.pi * 2
+    spin.duration = 4.8
+    spin.repeatCount = .infinity
+    disc.add(spin, forKey: "spin")
+    root.addSublayer(disc)
+  }
+
+  private func addCassetteLayer(to root: CALayer, title: String, box: CGFloat) {
+    let body = CALayer()
+    body.frame = CGRect(x: box * 0.04, y: box * 0.18, width: box * 0.92, height: box * 0.64)
+    body.cornerRadius = 10
+    body.backgroundColor = UIColor(red: 0.11, green: 0.14, blue: 0.22, alpha: 1).cgColor
+    body.borderWidth = 1
+    body.borderColor = UIColor(red: 0.44, green: 0.48, blue: 0.6, alpha: 1).cgColor
+    let titleLayer = CATextLayer()
+    titleLayer.contentsScale = 2
+    titleLayer.alignmentMode = .center
+    titleLayer.string = title
+    titleLayer.fontSize = max(8, box * 0.08)
+    titleLayer.foregroundColor = UIColor(red: 0.96, green: 0.91, blue: 0.78, alpha: 1).cgColor
+    titleLayer.frame = CGRect(x: 6, y: 6, width: body.bounds.width - 12, height: 16)
+    body.addSublayer(titleLayer)
+    for x in [body.bounds.width * 0.25, body.bounds.width * 0.75] {
+      let reel = CALayer()
+      reel.bounds = CGRect(x: 0, y: 0, width: box * 0.16, height: box * 0.16)
+      reel.position = CGPoint(x: x, y: body.bounds.height * 0.62)
+      reel.cornerRadius = reel.bounds.width / 2
+      reel.backgroundColor = UIColor(red: 0.23, green: 0.16, blue: 0.09, alpha: 1).cgColor
+      reel.borderWidth = 2
+      reel.borderColor = UIColor(red: 0.79, green: 0.64, blue: 0.42, alpha: 1).cgColor
+      let spin = CABasicAnimation(keyPath: "transform.rotation.z")
+      spin.fromValue = 0
+      spin.toValue = Double.pi * 2
+      spin.duration = 2.2
+      spin.repeatCount = .infinity
+      reel.add(spin, forKey: "spin")
+      body.addSublayer(reel)
+    }
+    root.addSublayer(body)
+  }
+
+  private func clock(_ seconds: Double) -> String {
+    let total = max(0, Int(seconds.rounded(.down)))
+    return String(format: "%d:%02d", total / 60, total % 60)
+  }
+
+  private func addPlayerLayer(to root: CALayer, sticker: ExportSticker, duration: Double) {
+    let glass = CALayer()
+    glass.frame = root.bounds
+    glass.cornerRadius = 22
+    glass.backgroundColor = UIColor(white: 1, alpha: 0.72).cgColor
+    glass.borderWidth = 1
+    glass.borderColor = UIColor(white: 1, alpha: 0.8).cgColor
+    glass.masksToBounds = true
+    let art = CALayer()
+    art.frame = CGRect(x: 12, y: (root.bounds.height - 40) / 2, width: 40, height: 40)
+    art.cornerRadius = 10
+    art.backgroundColor = UIColor(red: 0.78, green: 0.71, blue: 0.60, alpha: 1).cgColor
+    let note = CATextLayer()
+    note.contentsScale = 2
+    note.alignmentMode = .center
+    note.string = "♪"
+    note.fontSize = 16
+    note.foregroundColor = UIColor(red: 0.23, green: 0.16, blue: 0.11, alpha: 1).cgColor
+    note.frame = art.bounds
+    art.addSublayer(note)
+    glass.addSublayer(art)
+    let textLeft: CGFloat = 62
+    let textWidth = max(8, root.bounds.width - textLeft - 12)
+    let titleLayer = CATextLayer()
+    titleLayer.contentsScale = 2
+    titleLayer.alignmentMode = .left
+    titleLayer.truncationMode = .end
+    titleLayer.string = sticker.title
+    titleLayer.fontSize = 12
+    titleLayer.foregroundColor = UIColor(white: 0.1, alpha: 1).cgColor
+    titleLayer.frame = CGRect(x: textLeft, y: 12, width: textWidth, height: 16)
+    glass.addSublayer(titleLayer)
+    let artistLayer = CATextLayer()
+    artistLayer.contentsScale = 2
+    artistLayer.alignmentMode = .left
+    artistLayer.truncationMode = .end
+    artistLayer.string = sticker.artist.isEmpty ? "Artist" : sticker.artist
+    artistLayer.fontSize = 10
+    artistLayer.foregroundColor = UIColor(white: 0.42, alpha: 1).cgColor
+    artistLayer.frame = CGRect(x: textLeft, y: 28, width: textWidth, height: 13)
+    glass.addSublayer(artistLayer)
+    let track = CALayer()
+    track.frame = CGRect(x: textLeft, y: root.bounds.height - 26, width: textWidth, height: 3)
+    track.cornerRadius = 1.5
+    track.backgroundColor = UIColor(white: 0.32, alpha: 0.22).cgColor
+    glass.addSublayer(track)
+    let fill = CALayer()
+    fill.anchorPoint = CGPoint(x: 0, y: 0.5)
+    fill.bounds = CGRect(x: 0, y: 0, width: textWidth, height: 3)
+    fill.position = CGPoint(x: track.frame.minX, y: track.frame.midY)
+    fill.cornerRadius = 1.5
+    fill.backgroundColor = UIColor(white: 0.17, alpha: 1).cgColor
+    let grow = CABasicAnimation(keyPath: "transform.scale.x")
+    grow.fromValue = 0.02
+    grow.toValue = 1
+    grow.duration = max(duration > 0 ? duration : sticker.duration, 0.25)
+    grow.beginTime = AVCoreAnimationBeginTimeAtZero
+    grow.fillMode = .forwards
+    grow.isRemovedOnCompletion = false
+    fill.add(grow, forKey: "progress")
+    glass.addSublayer(fill)
+    let startTime = CATextLayer()
+    startTime.contentsScale = 2
+    startTime.alignmentMode = .left
+    startTime.string = "0:00"
+    startTime.fontSize = 9
+    startTime.foregroundColor = UIColor(white: 0.48, alpha: 1).cgColor
+    startTime.frame = CGRect(x: textLeft, y: root.bounds.height - 18, width: 40, height: 12)
+    glass.addSublayer(startTime)
+    let remain = max(duration > 0 ? duration : sticker.duration, 0)
+    let endTime = CATextLayer()
+    endTime.contentsScale = 2
+    endTime.alignmentMode = .right
+    endTime.string = "-\(clock(remain))"
+    endTime.fontSize = 9
+    endTime.foregroundColor = UIColor(white: 0.48, alpha: 1).cgColor
+    endTime.frame = CGRect(x: root.bounds.width - 52, y: root.bounds.height - 18, width: 40, height: 12)
+    glass.addSublayer(endTime)
+    root.addSublayer(glass)
+  }
+
+  private func addBeatsLayer(to root: CALayer, title: String) {
+    let body = CALayer()
+    body.frame = CGRect(x: 0, y: 0, width: root.bounds.width, height: root.bounds.height * 0.72)
+    body.cornerRadius = 16
+    body.backgroundColor = UIColor(white: 0.02, alpha: 1).cgColor
+    body.masksToBounds = true
+    let bars = 32
+    let pad: CGFloat = 8
+    let gap: CGFloat = 1.6
+    let usable = max(1, body.bounds.width - pad * 2)
+    let barW = max(2, (usable - gap * CGFloat(bars - 1)) / CGFloat(bars))
+    let maxH = max(8, body.bounds.height - 14)
+    for index in 0..<bars {
+      let bar = CALayer()
+      bar.anchorPoint = CGPoint(x: 0.5, y: 1)
+      bar.bounds = CGRect(x: 0, y: 0, width: barW, height: maxH)
+      bar.position = CGPoint(x: pad + CGFloat(index) * (barW + gap) + barW / 2, y: body.bounds.height - 7)
+      bar.cornerRadius = barW / 2
+      bar.backgroundColor = UIColor(hue: CGFloat(index) / CGFloat(max(1, bars - 1)) * 0.78, saturation: 1, brightness: 1, alpha: 1).cgColor
+      let pulse = CAKeyframeAnimation(keyPath: "transform.scale.y")
+      let base = [0.22, 0.7, 0.34, 0.96, 0.4, 0.82, 0.28, 0.64]
+      pulse.values = (0..<8).map { step in
+        base[(index * 3 + step * 5) % base.count]
+      }
+      pulse.keyTimes = [0, 0.14, 0.28, 0.42, 0.56, 0.7, 0.85, 1]
+      pulse.duration = 1.05 + Double(index % 6) * 0.11
+      pulse.repeatCount = .infinity
+      pulse.calculationMode = .linear
+      bar.add(pulse, forKey: "pulse")
+      body.addSublayer(bar)
+    }
+    root.addSublayer(body)
+    let titleLayer = CATextLayer()
+    titleLayer.contentsScale = 2
+    titleLayer.alignmentMode = .center
+    titleLayer.string = title
+    titleLayer.fontSize = max(9, root.bounds.width * 0.055)
+    titleLayer.foregroundColor = UIColor.white.cgColor
+    titleLayer.frame = CGRect(x: 4, y: body.frame.maxY + 2, width: root.bounds.width - 8, height: 16)
+    root.addSublayer(titleLayer)
+  }
+
+  private func addMusicLayer(to root: CALayer, title: String, box: CGFloat) {
+    let ring = CALayer()
+    ring.frame = CGRect(x: box * 0.04, y: 0, width: box * 0.92, height: box * 0.72)
+    let spikes = 72
+    let cx = ring.bounds.midX
+    let cy = ring.bounds.midY
+    let inner = min(ring.bounds.width, ring.bounds.height) * 0.22
+    let maxH = min(ring.bounds.width, ring.bounds.height) * 0.2
+    for index in 0..<spikes {
+      let angle = CGFloat(index) / CGFloat(spikes) * .pi * 2
+      let holder = CALayer()
+      holder.bounds = CGRect(x: 0, y: 0, width: 2, height: maxH)
+      holder.position = CGPoint(x: cx + cos(angle) * inner, y: cy + sin(angle) * inner)
+      holder.transform = CATransform3DMakeRotation(angle - .pi / 2, 0, 0, 1)
+      let spike = CALayer()
+      spike.anchorPoint = CGPoint(x: 0.5, y: 0)
+      spike.bounds = CGRect(x: 0, y: 0, width: 1.6, height: maxH)
+      spike.position = CGPoint(x: holder.bounds.midX, y: 0)
+      spike.backgroundColor = UIColor(white: 0.96, alpha: 1).cgColor
+      spike.cornerRadius = 0.8
+      let pulse = CAKeyframeAnimation(keyPath: "transform.scale.y")
+      let base: [CGFloat] = [0.18, 0.72, 0.3, 0.95, 0.42, 0.8, 0.22, 0.66]
+      pulse.values = (0..<8).map { step in
+        base[(index * 3 + step * 5) % base.count]
+      }
+      pulse.keyTimes = [0, 0.14, 0.28, 0.42, 0.56, 0.7, 0.85, 1]
+      pulse.duration = 1.05 + Double(index % 7) * 0.09
+      pulse.repeatCount = .infinity
+      pulse.calculationMode = .linear
+      spike.add(pulse, forKey: "pulse")
+      holder.addSublayer(spike)
+      ring.addSublayer(holder)
+    }
+    root.addSublayer(ring)
+    let titleLayer = CATextLayer()
+    titleLayer.contentsScale = 2
+    titleLayer.alignmentMode = .center
+    titleLayer.isWrapped = true
+    titleLayer.string = title
+    titleLayer.fontSize = max(9, box * 0.09)
+    titleLayer.foregroundColor = UIColor.white.cgColor
+    titleLayer.frame = CGRect(x: 4, y: box * 0.74, width: box - 8, height: box * 0.24)
+    root.addSublayer(titleLayer)
+  }
+
   private func alignment(_ value: String) -> CATextLayerAlignmentMode {
     switch value {
     case "left": return .left
@@ -318,6 +713,85 @@ public class VideoLyricExportModule: Module {
 
     if session.status != .completed {
       throw session.error ?? NSError(domain: "VideoLyricExport", code: 4, userInfo: [NSLocalizedDescriptionKey: "Audio extraction failed."])
+    }
+    return output.absoluteString
+  }
+
+  private func writeStillVideo(_ options: ExportOptions) throws -> String {
+    let source = url(from: options.videoUri)
+    guard let image = UIImage(contentsOfFile: source.path)?.cgImage else {
+      throw NSError(domain: "VideoLyricExport", code: 5, userInfo: [NSLocalizedDescriptionKey: "Could not read the selected photo."])
+    }
+
+    let duration = options.duration > 0 ? options.duration : 30
+    let longSide = max(image.width, image.height)
+    let scale = longSide > 1920 ? 1920.0 / Double(longSide) : 1
+    var width = max(2, Int(Double(image.width) * scale))
+    var height = max(2, Int(Double(image.height) * scale))
+    if width % 2 != 0 { width -= 1 }
+    if height % 2 != 0 { height -= 1 }
+
+    let output = FileManager.default.temporaryDirectory.appendingPathComponent("lyricvid-still-\(Int(Date().timeIntervalSince1970)).mp4")
+    try? FileManager.default.removeItem(at: output)
+
+    let writer = try AVAssetWriter(outputURL: output, fileType: .mp4)
+    let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
+      AVVideoCodecKey: AVVideoCodecType.h264,
+      AVVideoWidthKey: width,
+      AVVideoHeightKey: height,
+    ])
+    input.expectsMediaDataInRealTime = false
+    let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
+      kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32ARGB,
+      kCVPixelBufferWidthKey as String: width,
+      kCVPixelBufferHeightKey as String: height,
+    ])
+    guard writer.canAdd(input) else {
+      throw NSError(domain: "VideoLyricExport", code: 6, userInfo: [NSLocalizedDescriptionKey: "Could not start a video from this photo."])
+    }
+    writer.add(input)
+    guard writer.startWriting() else {
+      throw writer.error ?? NSError(domain: "VideoLyricExport", code: 7, userInfo: [NSLocalizedDescriptionKey: "Could not start a video from this photo."])
+    }
+    writer.startSession(atSourceTime: .zero)
+
+    var pixelBuffer: CVPixelBuffer?
+    CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_32ARGB, nil, &pixelBuffer)
+    guard let pixelBuffer else {
+      throw NSError(domain: "VideoLyricExport", code: 8, userInfo: [NSLocalizedDescriptionKey: "Could not draw the selected photo."])
+    }
+    CVPixelBufferLockBaseAddress(pixelBuffer, [])
+    if let context = CGContext(
+      data: CVPixelBufferGetBaseAddress(pixelBuffer),
+      width: width,
+      height: height,
+      bitsPerComponent: 8,
+      bytesPerRow: CVPixelBufferGetBytesPerRow(pixelBuffer),
+      space: CGColorSpaceCreateDeviceRGB(),
+      bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue
+    ) {
+      context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+    }
+    CVPixelBufferUnlockBaseAddress(pixelBuffer, [])
+
+    let fps: Int32 = 30
+    let frameCount = max(Int(duration * Double(fps)), 1)
+    let frameDuration = CMTime(value: 1, timescale: fps)
+    for index in 0..<frameCount {
+      while !input.isReadyForMoreMediaData {
+        Thread.sleep(forTimeInterval: 0.005)
+      }
+      let time = CMTimeMultiply(frameDuration, multiplier: Int32(index))
+      if !adaptor.append(pixelBuffer, withPresentationTime: time) {
+        throw writer.error ?? NSError(domain: "VideoLyricExport", code: 9, userInfo: [NSLocalizedDescriptionKey: "Could not write the photo video."])
+      }
+    }
+    input.markAsFinished()
+    let finished = DispatchSemaphore(value: 0)
+    writer.finishWriting { finished.signal() }
+    finished.wait()
+    if writer.status != .completed {
+      throw writer.error ?? NSError(domain: "VideoLyricExport", code: 10, userInfo: [NSLocalizedDescriptionKey: "Could not finish the photo video."])
     }
     return output.absoluteString
   }

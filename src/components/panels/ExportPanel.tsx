@@ -22,12 +22,14 @@ export function ExportPanel() {
   const lyrics = useProjectStore((s) => s.lyrics);
   const offset = useProjectStore((s) => s.offset);
   const style = useProjectStore((s) => s.style);
+  const stickers = useProjectStore((s) => s.stickers);
   const videoUri = useProjectStore((s) => s.videoUri);
   const videoName = useProjectStore((s) => s.videoName);
   const audioUri = useProjectStore((s) => s.audioUri);
   const keepOriginalAudio = useProjectStore((s) => s.keepOriginalAudio);
   const track = useProjectStore((s) => s.track);
   const videoDuration = useProjectStore((s) => s.videoDuration);
+  const sourceKind = useProjectStore((s) => s.sourceKind);
   const timingDuration = useProjectStore((s) => s.timingDuration);
   const stageWidth = useProjectStore((s) => s.stageWidth);
   const [busy, setBusy] = useState(false);
@@ -36,6 +38,7 @@ export function ExportPanel() {
   const stem = fileStem(track?.trackName ?? videoName);
   const duration = videoDuration > 0 ? videoDuration : timingDuration();
   const canExportVideo = isVideoExportAvailable();
+  const imageNeedsAudio = sourceKind === 'image' && !audioUri;
 
   useEffect(() => {
     preloadExportInterstitial();
@@ -49,12 +52,16 @@ export function ExportPanel() {
       const result = await exportFinalVideo({
         videoUri: videoUri!,
         audioUri,
-        replaceAudio: !keepOriginalAudio && Boolean(audioUri),
+        replaceAudio: sourceKind === 'image' ? Boolean(audioUri) : !keepOriginalAudio && Boolean(audioUri),
+        stillImage: sourceKind === 'image',
         stem,
         lyrics,
         offset,
         duration,
         style,
+        stickers,
+        stickerTitle: track?.trackName,
+        stickerArtist: track?.artistName,
         previewWidth: stageWidth,
         onProgress: (value) => {
           setProgress(value);
@@ -88,9 +95,10 @@ export function ExportPanel() {
       {!canExportVideo ? (
         <Helper>{t('export.expoGo')}</Helper>
       ) : null}
+      {imageNeedsAudio ? <Helper>{t('export.needAudio')}</Helper> : null}
       <Button
         label={busy ? t('export.busy') : t('export.action')}
-        disabled={!videoUri || !lyrics.length || busy}
+        disabled={!videoUri || !lyrics.length || busy || imageNeedsAudio}
         onPress={exportVideo}
       />
       {busy ? (

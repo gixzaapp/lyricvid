@@ -12,7 +12,20 @@ export type LyricLine = {
 
 export type SubtitleAlign = 'left' | 'center' | 'right';
 
-export type LyricAnimationId = 'none' | 'fade' | 'rise' | 'drop' | 'pop' | 'slide' | 'zoom';
+export type LyricAnimationId =
+  | 'none'
+  | 'fade'
+  | 'rise'
+  | 'drop'
+  | 'pop'
+  | 'slide'
+  | 'zoom'
+  | 'sparkle'
+  | 'fly'
+  | 'glow'
+  | 'bounce'
+  | 'float'
+  | 'wheel';
 
 export type SubtitleStyle = {
   fontFamily: string;
@@ -43,4 +56,14 @@ export type LrclibTrack = {
 
 export type RankedTrack = LrclibTrack & {
   delta: number;
+};
+
+export type StickerKind = 'vinyl' | 'cassette' | 'music' | 'beats' | 'player';
+
+export type VideoSticker = {
+  id: string;
+  kind: StickerKind;
+  x: number;
+  y: number;
+  scale: number;
 };

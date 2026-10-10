@@ -5,6 +5,8 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'rea
 import { StyleSheet, View } from 'react-native';
 
 import { LyricOverlay } from '@/components/LyricOverlay';
+import { StickerOverlay } from '@/components/StickerOverlay';
+import { WheelLyricOverlay } from '@/components/WheelLyricOverlay';
 import { PlaybackBar } from '@/components/PlaybackBar';
 import { getActiveLineIndex, getVisibleLineWords, lineEndTime } from '@/lib/lyrics';
 import { useT } from '@/store/locale';
@@ -32,6 +34,7 @@ export const VideoStage = forwardRef<VideoStageHandle, Props>(function VideoStag
   const lyrics = useProjectStore((s) => s.lyrics);
   const offset = useProjectStore((s) => s.offset);
   const style = useProjectStore((s) => s.style);
+  const track = useProjectStore((s) => s.track);
   const videoDuration = useProjectStore((s) => s.videoDuration);
   const setVideoDuration = useProjectStore((s) => s.setVideoDuration);
   const setAudioDuration = useProjectStore((s) => s.setAudioDuration);
@@ -200,18 +203,36 @@ export const VideoStage = forwardRef<VideoStageHandle, Props>(function VideoStag
           nativeControls={false}
           fullscreenOptions={{ enable: false }}
         />
-        <LyricOverlay
-          text={visibleLine.text}
-          words={visibleLine.words}
-          currentIndex={visibleLine.currentIndex}
-          lineKey={lineKey}
+        {style.animation === 'wheel' ? (
+          <WheelLyricOverlay
+            lyrics={lyrics}
+            currentTime={currentTime}
+            offset={offset}
+            duration={duration}
+            placeholder={t('stage.placeholder')}
+            styleConfig={style}
+            onPositionChange={setPosition}
+          />
+        ) : (
+          <LyricOverlay
+            text={visibleLine.text}
+            words={visibleLine.words}
+            currentIndex={visibleLine.currentIndex}
+            lineKey={lineKey}
+            currentTime={currentTime}
+            lineStart={lineStart}
+            lineEnd={lineEnd}
+            fadeOut={fadeOut}
+            placeholder={lyrics.length ? undefined : t('stage.placeholder')}
+            styleConfig={style}
+            onPositionChange={setPosition}
+          />
+        )}
+        <StickerOverlay
+          title={track?.trackName?.trim() || t('stickers.fallbackTitle')}
+          artist={track?.artistName?.trim() || t('stickers.fallbackArtist')}
           currentTime={currentTime}
-          lineStart={lineStart}
-          lineEnd={lineEnd}
-          fadeOut={fadeOut}
-          placeholder={lyrics.length ? undefined : t('stage.placeholder')}
-          styleConfig={style}
-          onPositionChange={setPosition}
+          duration={duration}
         />
       </View>
       <PlaybackBar

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 import { createLineId, lyricsFromTrack, splitLineAtWord } from '@/lib/lyrics';
-import type { LyricLine, LrclibTrack, SubtitleStyle } from '@/types';
+import type { LyricLine, LrclibTrack, StickerKind, SubtitleStyle, VideoSticker } from '@/types';
 
 const defaultStyle: SubtitleStyle = {
   fontFamily: 'sans',
@@ -18,7 +18,24 @@ const defaultStyle: SubtitleStyle = {
   y: 78,
 };
 
+export type SourceKind = 'video' | 'image';
+
+export const IMAGE_LENGTHS = [30, 60] as const;
+
+const STICKER_DEFAULTS: Record<StickerKind, { x: number; y: number }> = {
+  vinyl: { x: 20, y: 18 },
+  cassette: { x: 80, y: 18 },
+  music: { x: 20, y: 40 },
+  beats: { x: 80, y: 42 },
+  player: { x: 50, y: 20 },
+};
+
+function createStickerId() {
+  return `st_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
 type ProjectState = {
+  sourceKind: SourceKind;
   videoUri: string | null;
   videoName: string | null;
   videoDuration: number;
@@ -32,7 +49,10 @@ type ProjectState = {
   lyricsWarning: string | null;
   offset: number;
   style: SubtitleStyle;
+  stickers: VideoSticker[];
+  selectedStickerId: string | null;
   setVideo: (input: { uri: string; name: string; duration?: number }) => void;
+  setImage: (input: { uri: string; name: string }) => void;
   setVideoDuration: (duration: number) => void;
   setAudio: (input: { uri: string; name: string; duration?: number } | null) => void;
   setAudioDuration: (duration: number) => void;
@@ -47,6 +67,11 @@ type ProjectState = {
   setOffset: (offset: number) => void;
   setStyle: (patch: Partial<SubtitleStyle>) => void;
   setPosition: (x: number, y: number) => void;
+  toggleSticker: (kind: StickerKind) => void;
+  removeSticker: (id: string) => void;
+  selectSticker: (id: string | null) => void;
+  setStickerPosition: (id: string, x: number, y: number) => void;
+  setStickerScale: (id: string, scale: number) => void;
   timingDuration: () => number;
   pendingSongDetect: boolean;
   setPendingSongDetect: (value: boolean) => void;
@@ -56,6 +81,7 @@ type ProjectState = {
 };
 
 const initial = {
+  sourceKind: 'video' as SourceKind,
   videoUri: null as string | null,
   videoName: null as string | null,
   videoDuration: 0,
@@ -69,6 +95,8 @@ const initial = {
   lyricsWarning: null as string | null,
   offset: 0,
   style: defaultStyle,
+  stickers: [] as VideoSticker[],
+  selectedStickerId: null as string | null,
   pendingSongDetect: false,
   stageWidth: 0,
 };
@@ -77,9 +105,22 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   ...initial,
   setVideo: ({ uri, name, duration = 0 }) =>
     set({
+      sourceKind: 'video',
       videoUri: uri,
       videoName: name,
       videoDuration: duration,
+      keepOriginalAudio: true,
+    }),
+  setImage: ({ uri, name }) =>
+    set({
+      sourceKind: 'image',
+      videoUri: uri,
+      videoName: name,
+      videoDuration: 0,
+      keepOriginalAudio: false,
+      audioUri: null,
+      audioName: null,
+      audioDuration: 0,
     }),
   setVideoDuration: (duration) => {
     if (duration > 0) {
@@ -179,6 +220,37 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   setOffset: (offset) => set({ offset }),
   setStyle: (patch) => set((state) => ({ style: { ...state.style, ...patch } })),
   setPosition: (x, y) => set((state) => ({ style: { ...state.style, x, y } })),
+  toggleSticker: (kind) =>
+    set((state) => {
+      const existing = state.stickers.find((item) => item.kind === kind);
+      if (existing) {
+        return {
+          stickers: state.stickers.filter((item) => item.id !== existing.id),
+          selectedStickerId: state.selectedStickerId === existing.id ? null : state.selectedStickerId,
+        };
+      }
+      const sticker: VideoSticker = {
+        id: createStickerId(),
+        kind,
+        scale: 1,
+        ...STICKER_DEFAULTS[kind],
+      };
+      return { stickers: [...state.stickers, sticker], selectedStickerId: sticker.id };
+    }),
+  removeSticker: (id) =>
+    set((state) => ({
+      stickers: state.stickers.filter((item) => item.id !== id),
+      selectedStickerId: state.selectedStickerId === id ? null : state.selectedStickerId,
+    })),
+  selectSticker: (id) => set({ selectedStickerId: id }),
+  setStickerPosition: (id, x, y) =>
+    set((state) => ({
+      stickers: state.stickers.map((item) => (item.id === id ? { ...item, x, y } : item)),
+    })),
+  setStickerScale: (id, scale) =>
+    set((state) => ({
+      stickers: state.stickers.map((item) => (item.id === id ? { ...item, scale } : item)),
+    })),
   timingDuration: () => {
     const state = get();
     return state.videoDuration > 0 ? state.videoDuration : 0;
@@ -189,5 +261,5 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       set({ stageWidth: width });
     }
   },
-  reset: () => set({ ...initial, style: { ...defaultStyle } }),
+  reset: () => set({ ...initial, style: { ...defaultStyle }, stickers: [], selectedStickerId: null }),
 }));

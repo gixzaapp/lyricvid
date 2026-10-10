@@ -8,16 +8,21 @@ export type PickedMedia = {
   uri: string;
   name: string;
   duration: number;
+  kind: 'video' | 'image' | 'audio';
 };
 
-export async function pickVideoFromLibrary(): Promise<PickedMedia | null> {
-  const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-  if (!permission.granted) {
-    throw new Error('media.photoPermission');
-  }
+const IMAGE_NAME = /\.(jpe?g|png|webp|heic|heif|gif|bmp)$/i;
 
+export function mediaKind(name: string, mime?: string | null): 'video' | 'image' {
+  if (mime?.startsWith('image/')) return 'image';
+  if (mime?.startsWith('video/')) return 'video';
+  if (IMAGE_NAME.test(name)) return 'image';
+  return 'video';
+}
+
+export async function pickVideoFromLibrary(): Promise<PickedMedia | null> {
   const result = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ['videos'],
+    mediaTypes: ['videos', 'images'],
     quality: 1,
   });
 
@@ -26,11 +31,13 @@ export async function pickVideoFromLibrary(): Promise<PickedMedia | null> {
   }
 
   const asset = result.assets[0];
-  const name = asset.fileName ?? 'video.mp4';
+  const kind = asset.type === 'image' ? 'image' : mediaKind(asset.fileName ?? '', asset.mimeType);
+  const name = asset.fileName ?? (kind === 'image' ? 'photo.jpg' : 'video.mp4');
   return {
     uri: await cachePickedMedia(asset.uri, name),
     name,
-    duration: normalizePickerDuration(asset.duration),
+    duration: kind === 'image' ? 0 : normalizePickerDuration(asset.duration),
+    kind,
   };
 }
 
@@ -51,9 +58,11 @@ async function cachePickedMedia(uri: string, name: string) {
   }
 }
 
-export async function pickFile(kind: 'video' | 'audio'): Promise<PickedMedia | null> {
+export async function pickFile(kind: 'video' | 'audio' | 'media'): Promise<PickedMedia | null> {
+  const type =
+    kind === 'audio' ? ['audio/*'] : kind === 'media' ? ['video/*', 'image/*'] : ['video/*'];
   const result = await DocumentPicker.getDocumentAsync({
-    type: kind === 'video' ? ['video/*'] : ['audio/*'],
+    type,
     copyToCacheDirectory: true,
   });
 
@@ -62,9 +71,13 @@ export async function pickFile(kind: 'video' | 'audio'): Promise<PickedMedia | n
   }
 
   const asset = result.assets[0];
+  const name = asset.name ?? (kind === 'audio' ? 'audio.mp3' : 'video.mp4');
+  const pickedKind =
+    kind === 'audio' ? 'audio' : mediaKind(name, asset.mimeType);
   return {
     uri: asset.uri,
-    name: asset.name ?? (kind === 'video' ? 'video.mp4' : 'audio.mp3'),
+    name,
     duration: 0,
+    kind: pickedKind,
   };
 }

@@ -1,0 +1,9 @@
+These fonts are licensed under the SIL Open Font License, Version 1.1.
+See OFL.txt in this folder.
+
+Bundled families:
+- Dancing Script
+- Great Vibes
+- Pacifico
+- Parisienne
+- Allura

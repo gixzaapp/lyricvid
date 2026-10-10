@@ -1,3 +1,4 @@
+import * as Font from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -10,11 +11,24 @@ import { LanguageSelect } from '@/components/LanguageSelect';
 import { UpdatePrompt } from '@/components/UpdatePrompt';
 import { initializeAds } from '@/lib/ads';
 import { useLocaleStore } from '@/store/locale';
-import { colors } from '@/theme';
+import { CUSTOM_FONTS, colors } from '@/theme';
 
 SplashScreen.preventAutoHideAsync();
 
+async function loadScriptFonts() {
+  await Promise.all(
+    Object.entries(CUSTOM_FONTS).map(async ([name, source]) => {
+      try {
+        await Font.loadAsync({ [name]: source });
+      } catch {
+        // Keep other script fonts if one file fails to register.
+      }
+    }),
+  );
+}
+
 export default function RootLayout() {
+  const [fontsReady, setFontsReady] = useState(false);
   const [showBrand, setShowBrand] = useState(false);
   const [brandDone, setBrandDone] = useState(false);
   const hydrated = useLocaleStore((s) => s.hydrated);
@@ -25,12 +39,32 @@ export default function RootLayout() {
   useEffect(() => {
     void initializeAds();
     void useLocaleStore.getState().hydrate();
+    let cancelled = false;
+    const timeout = setTimeout(() => {
+      if (!cancelled) setFontsReady(true);
+    }, 4000);
+    void loadScriptFonts().finally(() => {
+      if (!cancelled) {
+        clearTimeout(timeout);
+        setFontsReady(true);
+      }
+    });
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!fontsReady) {
+      return;
+    }
     const timer = setTimeout(() => {
       SplashScreen.hide();
       setShowBrand(true);
     }, 800);
     return () => clearTimeout(timer);
-  }, []);
+  }, [fontsReady]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.bg }}>

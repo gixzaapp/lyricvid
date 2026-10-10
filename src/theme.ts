@@ -32,6 +32,11 @@ export type FontPresetId =
   | 'typewriter'
   | 'mono'
   | 'script'
+  | 'dancing'
+  | 'elegant'
+  | 'pacifico'
+  | 'parisienne'
+  | 'signature'
   | 'marker'
   | 'smallcaps';
 
@@ -47,9 +52,22 @@ export const FONT_PRESETS: {
   { id: 'typewriter', label: 'Typewriter', ios: 'AmericanTypewriter-Semibold', android: 'serif-monospace' },
   { id: 'mono', label: 'Mono', ios: 'Menlo', android: 'monospace' },
   { id: 'script', label: 'Script', ios: 'Noteworthy-Bold', android: 'cursive' },
+  { id: 'dancing', label: 'Dancing', ios: 'DancingScript', android: 'DancingScript' },
+  { id: 'elegant', label: 'Vibes', ios: 'GreatVibes-Regular', android: 'GreatVibes-Regular' },
+  { id: 'pacifico', label: 'Pacifico', ios: 'Pacifico-Regular', android: 'Pacifico-Regular' },
+  { id: 'parisienne', label: 'Parisienne', ios: 'Parisienne-Regular', android: 'Parisienne-Regular' },
+  { id: 'signature', label: 'Signature', ios: 'Allura-Regular', android: 'Allura-Regular' },
   { id: 'marker', label: 'Marker', ios: 'MarkerFelt-Wide', android: 'casual' },
   { id: 'smallcaps', label: 'Caps', ios: 'Copperplate-Bold', android: 'sans-serif-smallcaps' },
 ];
+
+export const CUSTOM_FONTS = {
+  DancingScript: require('../assets/fonts/DancingScript.ttf'),
+  'GreatVibes-Regular': require('../assets/fonts/GreatVibes-Regular.ttf'),
+  'Pacifico-Regular': require('../assets/fonts/Pacifico-Regular.ttf'),
+  'Parisienne-Regular': require('../assets/fonts/Parisienne-Regular.ttf'),
+  'Allura-Regular': require('../assets/fonts/Allura-Regular.ttf'),
+};
 
 const LEGACY_FONT_IDS: Record<string, FontPresetId> = {
   rounded: 'sans',
@@ -71,15 +89,40 @@ export function usesSystemLyricFont(text: string) {
   return COMPLEX_SCRIPT.test(text);
 }
 
-export function lyricFontStyle(fontId: string | undefined, text: string, platform: 'ios' | 'android') {
+export const CUSTOM_FONT_IDS: FontPresetId[] = [
+  'dancing',
+  'elegant',
+  'pacifico',
+  'parisienne',
+  'signature',
+];
+
+export function isCustomLyricFont(id?: string) {
+  return CUSTOM_FONT_IDS.includes(fontFamilyFor(id).id);
+}
+
+export function lyricFontStyle(
+  fontId: string | undefined,
+  text: string,
+  platform: 'ios' | 'android',
+  options?: { bold?: boolean; italic?: boolean },
+) {
   if (usesSystemLyricFont(text)) {
     return {};
   }
   const resolved = fontFamilyFor(fontId);
-  if (platform === 'ios') {
-    return resolved.ios ? { fontFamily: resolved.ios } : {};
+  const family = platform === 'ios' ? resolved.ios : resolved.android;
+  if (!family) {
+    return {};
   }
-  return { fontFamily: resolved.android };
+  if (isCustomLyricFont(resolved.id)) {
+    return { fontFamily: family };
+  }
+  return {
+    fontFamily: family,
+    fontWeight: options?.bold ? ('800' as const) : ('500' as const),
+    fontStyle: options?.italic ? ('italic' as const) : ('normal' as const),
+  };
 }
 
 export const PRESET_BACKGROUNDS = [

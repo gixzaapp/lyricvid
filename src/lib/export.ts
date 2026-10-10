@@ -14,7 +14,7 @@ import { Dimensions, Share } from 'react-native';
 import { highlightRangeInText, lineEndTime, wordsForLine } from '@/lib/lyrics';
 import { assTimestamp, srtTimestamp } from '@/lib/time';
 import { colors } from '@/theme';
-import type { LyricLine, SubtitleStyle } from '@/types';
+import type { LyricLine, SubtitleStyle, VideoSticker } from '@/types';
 
 type NativeExport = {
   exportVideo: (options: Record<string, unknown>) => Promise<string>;
@@ -283,7 +283,7 @@ export async function saveAllLocally(input: { stem: string; srt?: string; ass?: 
 }
 
 async function saveToGallery(uri: string) {
-  const permission = await MediaLibrary.requestPermissionsAsync();
+  const permission = await MediaLibrary.requestPermissionsAsync(true);
   if (!permission.granted) {
     return false;
   }
@@ -296,15 +296,31 @@ async function saveToGallery(uri: string) {
   }
 }
 
+function sourceExtension(uri: string, stillImage: boolean) {
+  if (!stillImage) {
+    return 'mp4';
+  }
+  const match = uri.split('?')[0]?.match(/\.([a-zA-Z0-9]+)$/);
+  const ext = (match?.[1] ?? 'jpg').toLowerCase();
+  if (['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif', 'gif', 'bmp'].includes(ext)) {
+    return ext;
+  }
+  return 'jpg';
+}
+
 export async function exportFinalVideo(input: {
   videoUri: string;
   audioUri?: string | null;
   replaceAudio: boolean;
+  stillImage?: boolean;
   stem: string;
   lyrics: LyricLine[];
   offset: number;
   duration: number;
   style: SubtitleStyle;
+  stickers?: VideoSticker[];
+  stickerTitle?: string;
+  stickerArtist?: string;
   previewWidth?: number;
   onProgress?: (progress: number) => void;
 }) {
@@ -317,7 +333,10 @@ export async function exportFinalVideo(input: {
   report(0.02);
   const outputPath = joinUri(await ensureExportsDir(), filename);
   await deleteAsync(outputPath, { idempotent: true });
-  const videoUri = await ensureLocalMedia(input.videoUri, `${input.stem}-source.mp4`);
+  const videoUri = await ensureLocalMedia(
+    input.videoUri,
+    `${input.stem}-source.${sourceExtension(input.videoUri, Boolean(input.stillImage))}`,
+  );
   report(0.08);
   const audioUri =
     input.replaceAudio && input.audioUri
@@ -346,6 +365,7 @@ export async function exportFinalVideo(input: {
       videoUri,
       audioUri,
       replaceAudio: Boolean(audioUri),
+      stillImage: Boolean(input.stillImage),
       outputPath,
       duration: input.duration,
       fontSize: input.style.fontSize,
@@ -363,6 +383,15 @@ export async function exportFinalVideo(input: {
       animation: input.style.animation ?? 'rise',
       animationSpeed: input.style.animationSpeed ?? 1,
       cues: exportCues(input.lyrics, input.offset, input.duration),
+      stickers: (input.stickers ?? []).map((sticker) => ({
+        kind: sticker.kind,
+        x: sticker.x,
+        y: sticker.y,
+        scale: sticker.scale,
+        title: (input.stickerTitle ?? 'Song').trim() || 'Song',
+        artist: (input.stickerArtist ?? 'Artist').trim() || 'Artist',
+        duration: input.duration,
+      })),
     });
     report(0.92);
   } catch (error) {

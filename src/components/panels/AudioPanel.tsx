@@ -5,16 +5,19 @@ import { Button, Card, Helper, SectionLabel } from '@/components/ui';
 import { pickFile } from '@/lib/media';
 import { formatDurationLabel } from '@/lib/time';
 import { errorText, useT } from '@/store/locale';
-import { useProjectStore } from '@/store/project';
+import { IMAGE_LENGTHS, useProjectStore } from '@/store/project';
 import { colors } from '@/theme';
 
 export function AudioPanel() {
   const t = useT();
   const keepOriginalAudio = useProjectStore((s) => s.keepOriginalAudio);
   const audioName = useProjectStore((s) => s.audioName);
+  const audioUri = useProjectStore((s) => s.audioUri);
   const audioDuration = useProjectStore((s) => s.audioDuration);
   const videoDuration = useProjectStore((s) => s.videoDuration);
+  const sourceKind = useProjectStore((s) => s.sourceKind);
   const setKeepOriginalAudio = useProjectStore((s) => s.setKeepOriginalAudio);
+  const setVideoDuration = useProjectStore((s) => s.setVideoDuration);
   const setAudio = useProjectStore((s) => s.setAudio);
   const [busy, setBusy] = useState(false);
 
@@ -31,6 +34,32 @@ export function AudioPanel() {
       setBusy(false);
     }
   };
+
+  if (sourceKind === 'image') {
+    return (
+      <View style={styles.col}>
+        <SectionLabel>{t('image.lengthLabel')}</SectionLabel>
+        <View style={styles.row}>
+          {IMAGE_LENGTHS.map((seconds) => (
+            <Button
+              key={seconds}
+              compact
+              label={t(seconds === 30 ? 'image.length30' : 'image.length60')}
+              variant={videoDuration === seconds ? 'primary' : 'secondary'}
+              onPress={() => setVideoDuration(seconds)}
+              style={styles.flex}
+            />
+          ))}
+        </View>
+        <SectionLabel>{t('audio.soundtrack')}</SectionLabel>
+        <Card>
+          <Text style={styles.name}>{audioName ?? t('audio.noTrack')}</Text>
+          <Helper>{audioUri ? t('audio.imageHelp', { duration: formatDurationLabel(videoDuration) }) : t('image.audioRequired')}</Helper>
+          <Button compact label={busy ? t('audio.opening') : t('audio.choose')} onPress={pickAudio} disabled={busy} />
+        </Card>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.col}>

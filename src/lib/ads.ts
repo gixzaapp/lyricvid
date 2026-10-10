@@ -1,6 +1,6 @@
 import { NativeModules, Platform } from 'react-native';
 
-import { ADMOB_BANNER_UNIT_ID, ADMOB_INTERSTITIAL_UNIT_ID } from '@/lib/adUnits';
+import { ADMOB_BANNER_UNIT_ID, ADMOB_DETECT_BANNER_UNIT_ID, ADMOB_INTERSTITIAL_UNIT_ID } from '@/lib/adUnits';
 
 type AdsModule = typeof import('react-native-google-mobile-ads');
 
@@ -25,6 +25,10 @@ export function getAds() {
 
 export function getBannerAdUnitId() {
   return ADMOB_BANNER_UNIT_ID;
+}
+
+export function getDetectBannerAdUnitId() {
+  return ADMOB_DETECT_BANNER_UNIT_ID;
 }
 
 function getInterstitialAdUnitId() {

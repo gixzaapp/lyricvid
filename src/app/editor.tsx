@@ -2,7 +2,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Keyboard,
   Platform,
@@ -14,25 +13,35 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { DetectBanner } from '@/components/DetectBanner';
+import { ImageStage } from '@/components/ImageStage';
 import { AudioPanel } from '@/components/panels/AudioPanel';
 import { ExportPanel } from '@/components/panels/ExportPanel';
 import { LyricsPanel } from '@/components/panels/LyricsPanel';
+import { StickersPanel } from '@/components/panels/StickersPanel';
 import { StylePanel } from '@/components/panels/StylePanel';
 import { SyncPanel } from '@/components/panels/SyncPanel';
 import { VideoStage, type VideoStageHandle } from '@/components/VideoStage';
 import { getLyricsById } from '@/lib/lrclib';
 import { detectSongFromMedia } from '@/lib/songDetect';
 import { errorText, useT } from '@/store/locale';
-import { useProjectStore } from '@/store/project';
+import { IMAGE_LENGTHS, useProjectStore } from '@/store/project';
 import { colors } from '@/theme';
 import type { TranslationKey } from '@/i18n';
 
-type TabId = 'audio' | 'lyrics' | 'style' | 'sync' | 'export';
+const DETECT_AD_MS = 3000;
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+type TabId = 'audio' | 'lyrics' | 'style' | 'stickers' | 'sync' | 'export';
 
 const TABS: { id: TabId; labelKey: TranslationKey; icon: keyof typeof Ionicons.glyphMap }[] = [
   { id: 'audio', labelKey: 'editor.audio', icon: 'musical-notes-outline' },
   { id: 'lyrics', labelKey: 'editor.lyrics', icon: 'text-outline' },
   { id: 'style', labelKey: 'editor.style', icon: 'color-palette-outline' },
+  { id: 'stickers', labelKey: 'editor.stickers', icon: 'pricetag-outline' },
   { id: 'sync', labelKey: 'editor.sync', icon: 'time-outline' },
   { id: 'export', labelKey: 'editor.export', icon: 'share-outline' },
 ];
@@ -41,17 +50,24 @@ export default function EditorScreen() {
   const router = useRouter();
   const t = useT();
   const videoUri = useProjectStore((s) => s.videoUri);
+  const sourceKind = useProjectStore((s) => s.sourceKind);
+  const videoDuration = useProjectStore((s) => s.videoDuration);
+  const setVideoDuration = useProjectStore((s) => s.setVideoDuration);
   const track = useProjectStore((s) => s.track);
   const applyTrack = useProjectStore((s) => s.applyTrack);
   const pendingSongDetect = useProjectStore((s) => s.pendingSongDetect);
   const setPendingSongDetect = useProjectStore((s) => s.setPendingSongDetect);
   const stageRef = useRef<VideoStageHandle>(null);
   const insets = useSafeAreaInsets();
-  const [tab, setTab] = useState<TabId>('lyrics');
+  const [tab, setTab] = useState<TabId>(sourceKind === 'image' ? 'audio' : 'lyrics');
   const [currentTime, setCurrentTime] = useState(0);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [detecting, setDetecting] = useState(false);
   const panelScrollRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    panelScrollRef.current?.scrollTo({ y: 0, animated: false });
+  }, [tab]);
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -67,7 +83,7 @@ export default function EditorScreen() {
   }, []);
 
   useEffect(() => {
-    if (!pendingSongDetect || !videoUri) {
+    if (!pendingSongDetect || !videoUri || sourceKind === 'image') {
       return;
     }
     const timer = setTimeout(() => {
@@ -82,6 +98,7 @@ export default function EditorScreen() {
             onPress: () => {
               void (async () => {
                 setDetecting(true);
+                let showResult = () => {};
                 try {
                   const project = useProjectStore.getState();
                   const sourceUri = project.videoUri ?? videoUri;
@@ -94,20 +111,29 @@ export default function EditorScreen() {
                     mediaDuration: project.videoDuration,
                   });
                   if (!tracks[0]) {
-                    Alert.alert(
-                      t('detect.noLyricsTitle'),
-                      t('detect.noLyricsBody', { artist: match.artist, title: match.title }),
-                    );
-                    return;
+                    showResult = () => {
+                      Alert.alert(
+                        t('detect.noLyricsTitle'),
+                        t('detect.noLyricsBody', { artist: match.artist, title: match.title }),
+                      );
+                    };
+                  } else {
+                    const full = await getLyricsById(tracks[0].id);
+                    applyTrack(full);
+                    showResult = () => {
+                      Alert.alert(t('detect.loadedTitle'), `${match.artist} — ${match.title}`);
+                    };
                   }
-                  const full = await getLyricsById(tracks[0].id);
-                  applyTrack(full);
-                  Alert.alert(t('detect.loadedTitle'), `${match.artist} — ${match.title}`);
                 } catch (error) {
-                  Alert.alert(t('detect.failTitle'), errorText(error, 'detect.failFallback'));
+                  const message = errorText(error, 'detect.failFallback');
+                  showResult = () => {
+                    Alert.alert(t('detect.failTitle'), message);
+                  };
                 } finally {
+                  await wait(DETECT_AD_MS);
                   setDetecting(false);
                 }
+                showResult();
               })();
             },
           },
@@ -115,7 +141,7 @@ export default function EditorScreen() {
       );
     }, 450);
     return () => clearTimeout(timer);
-  }, [applyTrack, pendingSongDetect, setPendingSongDetect, t, videoUri]);
+  }, [applyTrack, pendingSongDetect, setPendingSongDetect, sourceKind, t, videoUri]);
 
   const keyboardOpen = keyboardHeight > 0;
   const dockLift = Platform.OS === 'android' ? Math.max(0, keyboardHeight - insets.bottom) : 0;
@@ -136,6 +162,36 @@ export default function EditorScreen() {
     );
   }
 
+  if (sourceKind === 'image' && videoDuration <= 0) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+        <View style={styles.header}>
+          <Pressable onPress={() => router.back()} style={styles.iconBtn}>
+            <Ionicons name="chevron-back" size={22} color={colors.text} />
+          </Pressable>
+          <Text numberOfLines={1} style={styles.title}>
+            {t('image.lengthTitle')}
+          </Text>
+          <View style={styles.iconBtn} />
+        </View>
+        <View style={styles.lengthBody}>
+          <Text style={styles.lengthCopy}>{t('image.lengthBody')}</Text>
+          {IMAGE_LENGTHS.map((seconds) => (
+            <Pressable
+              key={seconds}
+              onPress={() => {
+                setVideoDuration(seconds);
+                setTab('audio');
+              }}
+              style={styles.lengthChoice}>
+              <Text style={styles.lengthChoiceLabel}>{t(seconds === 30 ? 'image.length30' : 'image.length60')}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
@@ -150,12 +206,21 @@ export default function EditorScreen() {
         </Pressable>
       </View>
 
-      <VideoStage
-        ref={stageRef}
-        currentTime={currentTime}
-        onCurrentTime={setCurrentTime}
-        compact={keyboardOpen}
-      />
+      {sourceKind === 'image' ? (
+        <ImageStage
+          ref={stageRef}
+          currentTime={currentTime}
+          onCurrentTime={setCurrentTime}
+          compact={keyboardOpen}
+        />
+      ) : (
+        <VideoStage
+          ref={stageRef}
+          currentTime={currentTime}
+          onCurrentTime={setCurrentTime}
+          compact={keyboardOpen}
+        />
+      )}
 
       <View
         style={[
@@ -164,7 +229,13 @@ export default function EditorScreen() {
           dockLift > 0 ? { paddingBottom: dockLift } : null,
         ]}>
         {keyboardOpen ? null : (
-          <View style={styles.tabs}>
+          <ScrollView
+            horizontal
+            style={styles.tabBar}
+            contentContainerStyle={styles.tabs}
+            showsHorizontalScrollIndicator={false}
+            showsVerticalScrollIndicator={false}
+            bounces={false}>
             {TABS.map((item) => {
               const active = item.id === tab;
               return (
@@ -178,9 +249,10 @@ export default function EditorScreen() {
                 </Pressable>
               );
             })}
-          </View>
+          </ScrollView>
         )}
         <ScrollView
+          key={tab}
           ref={panelScrollRef}
           style={styles.panel}
           contentContainerStyle={[
@@ -202,13 +274,14 @@ export default function EditorScreen() {
             />
           ) : null}
           {tab === 'style' ? <StylePanel /> : null}
+          {tab === 'stickers' ? <StickersPanel /> : null}
           {tab === 'sync' ? <SyncPanel /> : null}
           {tab === 'export' ? <ExportPanel /> : null}
         </ScrollView>
       </View>
       {detecting ? (
         <View style={styles.detectOverlay}>
-          <ActivityIndicator color={colors.accent} size="large" />
+          <DetectBanner />
           <Text style={styles.detectText}>{t('editor.detecting')}</Text>
         </View>
       ) : null}
@@ -251,16 +324,24 @@ const styles = StyleSheet.create({
     flex: 1,
     height: undefined,
   },
+  tabBar: {
+    flexGrow: 0,
+    flexShrink: 0,
+    height: 52,
+  },
   tabs: {
+    flexGrow: 1,
     flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 8,
-    paddingTop: 8,
+    paddingTop: 4,
   },
   tab: {
-    flex: 1,
+    minWidth: 56,
     alignItems: 'center',
-    gap: 4,
-    paddingVertical: 6,
+    gap: 2,
+    paddingVertical: 4,
+    paddingHorizontal: 6,
   },
   tabLabel: {
     color: colors.muted,
@@ -290,6 +371,31 @@ const styles = StyleSheet.create({
   },
   link: {
     color: colors.accent,
+    fontWeight: '700',
+  },
+  lengthBody: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 22,
+    gap: 12,
+  },
+  lengthCopy: {
+    color: colors.muted,
+    fontSize: 16,
+    lineHeight: 22,
+    marginBottom: 8,
+  },
+  lengthChoice: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 18,
+    paddingHorizontal: 18,
+  },
+  lengthChoiceLabel: {
+    color: colors.text,
+    fontSize: 18,
     fontWeight: '700',
   },
   detectOverlay: {

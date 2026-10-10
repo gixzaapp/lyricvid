@@ -1,7 +1,7 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { LANGUAGES, type LocaleCode } from '@/i18n/languages';
+import { CONTINENTS, LANGUAGES, type LocaleCode } from '@/i18n/languages';
 import { useT } from '@/store/locale';
 import { colors } from '@/theme';
 
@@ -17,24 +17,37 @@ export function LanguageSelect({ selected, onSelect }: Props) {
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
       <Text style={styles.title}>{t('language.title')}</Text>
       <Text style={styles.subtitle}>{t('language.subtitle')}</Text>
-      <ScrollView contentContainerStyle={styles.grid} showsVerticalScrollIndicator={false}>
-        {LANGUAGES.map((item) => {
-          const active = selected === item.code;
+      <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
+        {CONTINENTS.map((continent) => {
+          const items = LANGUAGES.filter((item) => item.continent === continent.id);
+          if (items.length === 0) {
+            return null;
+          }
           return (
-            <Pressable
-              key={item.code}
-              onPress={() => onSelect(item.code)}
-              style={({ pressed }) => [
-                styles.card,
-                active && styles.cardOn,
-                pressed && styles.pressed,
-              ]}>
-              <View style={[styles.mark, active && styles.markOn]}>
-                <Text style={[styles.markText, active && styles.markTextOn]}>{item.mark}</Text>
+            <View key={continent.id} style={styles.section}>
+              <Text style={styles.sectionTitle}>{t(continent.titleKey)}</Text>
+              <View style={styles.grid}>
+                {items.map((item) => {
+                  const active = selected === item.code;
+                  return (
+                    <Pressable
+                      key={item.code}
+                      onPress={() => onSelect(item.code)}
+                      style={({ pressed }) => [
+                        styles.card,
+                        active && styles.cardOn,
+                        pressed && styles.pressed,
+                      ]}>
+                      <View style={[styles.mark, active && styles.markOn]}>
+                        <Text style={[styles.markText, active && styles.markTextOn]}>{item.mark}</Text>
+                      </View>
+                      <Text style={styles.native}>{item.nativeName}</Text>
+                      <Text style={styles.english}>{item.englishName}</Text>
+                    </Pressable>
+                  );
+                })}
               </View>
-              <Text style={styles.native}>{item.nativeName}</Text>
-              <Text style={styles.english}>{item.englishName}</Text>
-            </Pressable>
+            </View>
           );
         })}
       </ScrollView>
@@ -60,13 +73,26 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     marginTop: 8,
-    marginBottom: 28,
+    marginBottom: 20,
+  },
+  list: {
+    paddingBottom: 28,
+    gap: 22,
+  },
+  section: {
+    gap: 12,
+  },
+  sectionTitle: {
+    color: colors.muted,
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
   },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,
-    paddingBottom: 28,
   },
   card: {
     width: '47.5%',

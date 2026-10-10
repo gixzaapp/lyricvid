@@ -4,7 +4,7 @@ import { Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 
 import { Chip, SectionLabel } from '@/components/ui';
 import type { TranslationKey } from '@/i18n';
 import { ANIMATION_PRESETS, ANIMATION_SPEED_MAX, ANIMATION_SPEED_MIN, animatesWholeLine } from '@/lib/lyricMotion';
-import { FONT_PRESETS, PRESET_BACKGROUNDS, PRESET_TEXT_COLORS, colors, fontFamilyFor } from '@/theme';
+import { FONT_PRESETS, PRESET_BACKGROUNDS, PRESET_TEXT_COLORS, colors, fontFamilyFor, isCustomLyricFont } from '@/theme';
 import { useT } from '@/store/locale';
 import { useProjectStore } from '@/store/project';
 import type { LyricAnimationId } from '@/types';
@@ -23,6 +23,12 @@ const ANIM_KEYS: Record<LyricAnimationId, TranslationKey> = {
   pop: 'style.animPop',
   slide: 'style.animSlide',
   zoom: 'style.animZoom',
+  sparkle: 'style.animSparkle',
+  fly: 'style.animFly',
+  glow: 'style.animGlow',
+  bounce: 'style.animBounce',
+  float: 'style.animFloat',
+  wheel: 'style.animWheel',
 };
 
 const BG_KEYS: Record<string, TranslationKey> = {
@@ -50,7 +56,14 @@ export function StylePanel() {
               key={font.id}
               onPress={() => setStyle({ fontFamily: font.id })}
               style={[styles.fontCard, selected && styles.fontCardOn]}>
-              <Text style={[styles.fontSample, family ? { fontFamily: family } : null]}>{t('style.sample')}</Text>
+              <Text
+                style={[
+                  styles.fontSample,
+                  family ? { fontFamily: family } : null,
+                  isCustomLyricFont(font.id) ? styles.scriptSample : null,
+                ]}>
+                {t('style.sample')}
+              </Text>
               <Text style={[styles.fontName, selected && styles.fontNameOn]}>{font.label}</Text>
             </Pressable>
           );
@@ -204,6 +217,10 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 18,
     fontWeight: '600',
+  },
+  scriptSample: {
+    fontSize: 22,
+    fontWeight: 'normal',
   },
   fontName: {
     color: colors.muted,

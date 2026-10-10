@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { DetectBanner } from '@/components/DetectBanner';
 import { Button, Helper } from '@/components/ui';
 import { isTranslationKey } from '@/i18n';
 import { isAuddEnabled } from '@/lib/audd';
@@ -21,6 +22,12 @@ import { errorText, useT } from '@/store/locale';
 import { useProjectStore } from '@/store/project';
 import { colors } from '@/theme';
 import type { LrclibTrack } from '@/types';
+
+const DETECT_AD_MS = 3000;
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 type Props = {
   visible: boolean;
@@ -83,25 +90,31 @@ export function SongSearchModal({ visible, currentTime, onClose }: Props) {
     setError(null);
     setNotice(null);
     setResults([]);
+    let showResult = () => {};
     try {
       const { match, tracks } = await detectSongFromMedia({
         sourceUri,
         currentTime,
         mediaDuration: sourceDuration,
       });
-      setTrackName(match.title);
-      setArtistName(match.artist);
-      if (tracks.length === 0) {
-        setError(t('search.detectNoLyrics', { artist: match.artist, title: match.title }));
-        return;
-      }
-      setResults(tracks);
-      setNotice(t('search.detected', { artist: match.artist, title: match.title }));
+      showResult = () => {
+        setTrackName(match.title);
+        setArtistName(match.artist);
+        if (tracks.length === 0) {
+          setError(t('search.detectNoLyrics', { artist: match.artist, title: match.title }));
+          return;
+        }
+        setResults(tracks);
+        setNotice(t('search.detected', { artist: match.artist, title: match.title }));
+      };
     } catch (err) {
-      setError(errorText(err, 'search.detectFailed'));
+      const message = errorText(err, 'search.detectFailed');
+      showResult = () => setError(message);
     } finally {
+      await wait(DETECT_AD_MS);
       setBusy(null);
     }
+    showResult();
   };
 
   const pick = async (item: LrclibTrack) => {
@@ -153,10 +166,16 @@ export function SongSearchModal({ visible, currentTime, onClose }: Props) {
         {canDetect ? (
           <Button
             variant="secondary"
-            label={busy === 'detect' ? t('search.detecting') : t('search.detect')}
+            label={t('search.detect')}
             onPress={detect}
             disabled={busy != null || !sourceUri}
           />
+        ) : null}
+        {busy === 'detect' ? (
+          <View style={styles.detectBlock}>
+            <Text style={styles.detectText}>{t('search.detecting')}</Text>
+            <DetectBanner />
+          </View>
         ) : null}
         {canDetect && !sourceUri ? (
           <Helper>{t('search.needVideo')}</Helper>
@@ -167,7 +186,7 @@ export function SongSearchModal({ visible, currentTime, onClose }: Props) {
         {notice ? (
           <Helper>{isTranslationKey(notice) ? t(notice) : notice}</Helper>
         ) : null}
-        {busy ? <ActivityIndicator color={colors.accent} style={{ marginTop: 16 }} /> : null}
+        {busy === 'search' ? <ActivityIndicator color={colors.accent} style={{ marginTop: 16 }} /> : null}
         <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
           {results.map((item) => (
             <Pressable key={item.id} onPress={() => pick(item)} style={styles.result}>
@@ -210,6 +229,15 @@ const styles = StyleSheet.create({
   },
   close: {
     color: colors.accent,
+    fontWeight: '700',
+  },
+  detectBlock: {
+    alignItems: 'center',
+    gap: 8,
+  },
+  detectText: {
+    color: colors.text,
+    fontSize: 16,
     fontWeight: '700',
   },
   input: {

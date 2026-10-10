@@ -17,6 +17,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const t = useT();
   const setVideo = useProjectStore((s) => s.setVideo);
+  const setImage = useProjectStore((s) => s.setImage);
   const setPendingSongDetect = useProjectStore((s) => s.setPendingSongDetect);
   const videoUri = useProjectStore((s) => s.videoUri);
   const videoName = useProjectStore((s) => s.videoName);
@@ -26,11 +27,16 @@ export default function HomeScreen() {
   const openVideo = async (from: 'library' | 'files') => {
     try {
       setBusy(true);
-      const picked = from === 'library' ? await pickVideoFromLibrary() : await pickFile('video');
+      const picked = from === 'library' ? await pickVideoFromLibrary() : await pickFile('media');
       if (!picked) return;
       reset();
-      setVideo(picked);
-      setPendingSongDetect(isAuddEnabled());
+      if (picked.kind === 'image') {
+        setImage(picked);
+        setPendingSongDetect(false);
+      } else {
+        setVideo(picked);
+        setPendingSongDetect(isAuddEnabled());
+      }
       router.push('/editor');
     } catch (error) {
       Alert.alert(t('home.openError'), errorText(error, 'common.unknownError'));
