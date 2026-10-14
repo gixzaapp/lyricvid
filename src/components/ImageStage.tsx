@@ -3,11 +3,13 @@ import { Image } from 'expo-image';
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
+import { DepthLyricOverlay } from '@/components/DepthLyricOverlay';
 import { LyricOverlay } from '@/components/LyricOverlay';
 import { StickerOverlay } from '@/components/StickerOverlay';
 import { WheelLyricOverlay } from '@/components/WheelLyricOverlay';
 import { PlaybackBar } from '@/components/PlaybackBar';
 import type { VideoStageHandle } from '@/components/VideoStage';
+import { isDepthStyle } from '@/lib/lyricDepth';
 import { getActiveLineIndex, getVisibleLineWords, lineEndTime } from '@/lib/lyrics';
 import { useT } from '@/store/locale';
 import { useProjectStore } from '@/store/project';
@@ -126,6 +128,17 @@ export const ImageStage = forwardRef<VideoStageHandle, Props>(function ImageStag
         {imageUri ? <Image source={{ uri: imageUri }} style={styles.video} contentFit="contain" /> : null}
         {style.animation === 'wheel' ? (
           <WheelLyricOverlay
+            lyrics={lyrics}
+            currentTime={currentTime}
+            offset={offset}
+            duration={end}
+            placeholder={t('stage.placeholder')}
+            styleConfig={style}
+            onPositionChange={setPosition}
+          />
+        ) : isDepthStyle(style.animation) ? (
+          <DepthLyricOverlay
+            mode={style.animation}
             lyrics={lyrics}
             currentTime={currentTime}
             offset={offset}

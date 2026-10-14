@@ -6,17 +6,43 @@ plugins {
 group = 'expo.modules.videolyricexport'
 version = '1.0.0'
 
+def shazamProps = new Properties()
+def shazamFile = file("${projectDir}/../../../credentials/shazam.properties")
+if (shazamFile.exists()) {
+  shazamFile.withInputStream { shazamProps.load(it) }
+}
+
+def escapeBuildConfig = { value ->
+  String.valueOf(value ?: '')
+    .replace('\\', '\\\\')
+    .replace('"', '\\"')
+    .replace('\r', '')
+    .replace('\n', '\\n')
+}
+
 android {
   namespace "expo.modules.videolyricexport"
+  buildFeatures {
+    buildConfig true
+  }
   defaultConfig {
     versionCode 1
     versionName "1.0.0"
+    buildConfigField "String", "SHAZAM_DEVELOPER_TOKEN", "\"${escapeBuildConfig(shazamProps['developerToken'])}\""
+    buildConfigField "String", "SHAZAM_TEAM_ID", "\"${escapeBuildConfig(shazamProps['teamId'])}\""
+    buildConfigField "String", "SHAZAM_KEY_ID", "\"${escapeBuildConfig(shazamProps['keyId'])}\""
+    buildConfigField "String", "SHAZAM_PRIVATE_KEY", "\"${escapeBuildConfig(shazamProps['privateKey'])}\""
   }
 }
 
 dependencies {
   def media3 = "1.8.0"
+  compileOnly files('libs/shazamkit-android-release.aar')
   implementation "androidx.media3:media3-transformer:$media3"
   implementation "androidx.media3:media3-effect:$media3"
   implementation "androidx.media3:media3-common:$media3"
+  implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1"
+  implementation "com.squareup.okhttp3:okhttp:4.12.0"
+  implementation "com.squareup.retrofit2:retrofit:2.11.0"
+  implementation "com.squareup.retrofit2:converter-gson:2.11.0"
 }

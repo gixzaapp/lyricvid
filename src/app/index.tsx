@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppMenu } from '@/components/AppMenu';
 import { LandingBanner } from '@/components/LandingBanner';
-import { isAuddEnabled } from '@/lib/audd';
+import { isShazamEnabled } from '@/lib/shazam';
 import { pickFile, pickVideoFromLibrary } from '@/lib/media';
 import { errorText, useT } from '@/store/locale';
 import { useProjectStore } from '@/store/project';
@@ -35,7 +35,7 @@ export default function HomeScreen() {
         setPendingSongDetect(false);
       } else {
         setVideo(picked);
-        setPendingSongDetect(isAuddEnabled());
+        setPendingSongDetect(isShazamEnabled());
       }
       router.push('/editor');
     } catch (error) {

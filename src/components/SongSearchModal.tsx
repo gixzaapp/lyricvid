@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { DetectBanner } from '@/components/DetectBanner';
 import { Button, Helper } from '@/components/ui';
 import { isTranslationKey } from '@/i18n';
-import { isAuddEnabled } from '@/lib/audd';
+import { isShazamEnabled } from '@/lib/shazam';
 import { getLyricsById, searchLyrics } from '@/lib/lrclib';
 import { detectSongFromMedia } from '@/lib/songDetect';
 import { formatDurationLabel } from '@/lib/time';
@@ -49,7 +49,7 @@ export function SongSearchModal({ visible, currentTime, onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [results, setResults] = useState<LrclibTrack[]>([]);
-  const canDetect = isAuddEnabled();
+  const canDetect = isShazamEnabled();
   const sourceUri = !keepOriginalAudio && audioUri ? audioUri : videoUri;
   const sourceDuration = !keepOriginalAudio && audioUri ? audioDuration : videoDuration;
 

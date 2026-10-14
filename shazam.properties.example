@@ -1,0 +1,10 @@
+# Copy to credentials/shazam.properties (gitignored).
+# Android only. iOS uses the ShazamKit App Service on your Apple Developer App ID.
+#
+# Option A — paste a JWT created from your Media Services / ShazamKit key:
+# developerToken=eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IkFQUExFS0VZSUQifQ...
+#
+# Option B — let the app sign a token at runtime:
+# teamId=YOUR10CHARTEAM
+# keyId=YOURKEYID
+# privateKey=-----BEGIN PRIVATE KEY-----\nMIGT...\n-----END PRIVATE KEY-----

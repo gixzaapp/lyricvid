@@ -25,7 +25,10 @@ export type LyricAnimationId =
   | 'glow'
   | 'bounce'
   | 'float'
-  | 'wheel';
+  | 'wheel'
+  | 'flip'
+  | 'coverflow'
+  | 'prism';
 
 export type SubtitleStyle = {
   fontFamily: string;

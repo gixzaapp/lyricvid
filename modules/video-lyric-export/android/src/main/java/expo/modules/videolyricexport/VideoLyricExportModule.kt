@@ -112,6 +112,12 @@ class VideoLyricExportModule : Module() {
     Name("VideoLyricExport")
     Events("onExportProgress")
 
+    Constants("songRecognitionAvailable" to ShazamDeveloperToken.isConfigured(null))
+
+    Function("isSongRecognitionAvailable") {
+      ShazamDeveloperToken.isConfigured(null)
+    }
+
     AsyncFunction("extractAudioClip") { sourceUri: String, startSeconds: Double, durationSeconds: Double, promise: Promise ->
       val context = appContext.reactContext?.applicationContext
       if (context == null) {
@@ -123,6 +129,41 @@ class VideoLyricExportModule : Module() {
           promise.resolve(extractAudioClip(context, sourceUri, startSeconds, durationSeconds))
         } catch (error: Exception) {
           promise.reject("EXTRACT_FAILED", error.message ?: "Could not extract an audio clip.", error)
+        }
+      }.start()
+    }
+
+    AsyncFunction("recognizeSong") { sourceUri: String, startSeconds: Double, durationSeconds: Double, developerToken: String?, promise: Promise ->
+      val context = appContext.reactContext?.applicationContext
+      if (context == null) {
+        promise.reject("NO_CONTEXT", "App is not ready to detect a song.", null)
+        return@AsyncFunction
+      }
+      Thread {
+        var clipPath: String? = null
+        try {
+          if (!ShazamDeveloperToken.isConfigured(developerToken)) {
+            promise.reject("NO_TOKEN", "detect.noToken", null)
+            return@Thread
+          }
+          clipPath = extractAudioClip(context, sourceUri, startSeconds, durationSeconds.coerceIn(6.0, 12.0))
+          val clip = File(filePath(clipPath))
+          val match = ShazamRecognizer.recognizeFile(clip, developerToken)
+          promise.resolve(match)
+        } catch (error: Exception) {
+          val message = error.message ?: "detect.requestFailed"
+          if (message == "detect.noToken") {
+            promise.reject("NO_TOKEN", message, error)
+          } else {
+            promise.reject("SHAZAM_FAILED", message, error)
+          }
+        } finally {
+          clipPath?.let { path ->
+            val clip = File(filePath(path))
+            if (clip.name.contains("lyricvid-detect-")) {
+              clip.delete()
+            }
+          }
         }
       }.start()
     }
@@ -321,29 +362,33 @@ class VideoLyricExportModule : Module() {
       output.delete()
     }
 
-    val startUs = (startSeconds.coerceAtLeast(0.0) * 1_000_000.0).toLong()
-    val endUs = startUs + (durationSeconds.coerceAtLeast(1.0) * 1_000_000.0).toLong()
-    val copied = try {
-      passthroughAacClip(local, output, startUs, endUs)
-    } catch (error: Exception) {
-      if (output.exists()) {
-        output.delete()
+    try {
+      val startUs = (startSeconds.coerceAtLeast(0.0) * 1_000_000.0).toLong()
+      val endUs = startUs + (durationSeconds.coerceAtLeast(1.0) * 1_000_000.0).toLong()
+      val copied = try {
+        passthroughAacClip(local, output, startUs, endUs)
+      } catch (error: Exception) {
+        if (output.exists()) {
+          output.delete()
+        }
+        if (error.message?.contains("no audio track") == true) {
+          throw error
+        }
+        false
       }
-      if (error.message?.contains("no audio track") == true) {
-        throw error
+      if (!copied) {
+        if (output.exists()) {
+          output.delete()
+        }
+        transcodeAudioClip(context, local, output, startSeconds, durationSeconds)
       }
-      false
-    }
-    if (!copied) {
-      if (output.exists()) {
-        output.delete()
+      if (output.length() <= 0L) {
+        throw IllegalStateException("The extracted audio clip was empty.")
       }
-      transcodeAudioClip(context, local, output, startSeconds, durationSeconds)
+      return toFileUri(output.absolutePath)
+    } finally {
+      local.delete()
     }
-    if (output.length() <= 0L) {
-      throw IllegalStateException("The extracted audio clip was empty.")
-    }
-    return toFileUri(output.absolutePath)
   }
 
   private fun passthroughAacClip(source: File, output: File, startUs: Long, endUs: Long): Boolean {

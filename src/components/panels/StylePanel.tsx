@@ -29,6 +29,9 @@ const ANIM_KEYS: Record<LyricAnimationId, TranslationKey> = {
   bounce: 'style.animBounce',
   float: 'style.animFloat',
   wheel: 'style.animWheel',
+  flip: 'style.animFlip',
+  coverflow: 'style.animCoverFlow',
+  prism: 'style.animPrism',
 };
 
 const BG_KEYS: Record<string, TranslationKey> = {

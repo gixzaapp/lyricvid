@@ -2,7 +2,7 @@
   "expo": {
     "name": "AI LyricVid",
     "slug": "lyricvid",
-    "version": "1.0.7",
+    "version": "1.0.8",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "lyricvid",
@@ -10,6 +10,9 @@
     "ios": {
       "icon": "./assets/expo.icon",
       "bundleIdentifier": "com.gixza.lyricvid",
+      "entitlements": {
+        "com.apple.developer.shazamkit": true
+      },
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "AI LyricVid needs access to your videos so you can overlay lyrics.",
         "NSPhotoLibraryAddUsageDescription": "AI LyricVid saves the finished lyric video to your library."
@@ -18,7 +21,7 @@
     },
     "android": {
       "package": "com.gixza.lyricvid",
-      "versionCode": 8,
+      "versionCode": 9,
       "permissions": [
         "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.READ_EXTERNAL_STORAGE"
@@ -37,10 +40,11 @@
       "predictiveBackGestureEnabled": false
     },
     "web": {
-      "output": "static",
+      "output": "single",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
+      "./plugins/withShazamKit",
       "expo-router",
       [
         "expo-splash-screen",

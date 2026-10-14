@@ -15,7 +15,7 @@ Pod::Spec.new do |s|
   s.source         = { git: 'https://github.com/' }
   s.static_framework = true
   s.dependency 'ExpoModulesCore'
-  s.frameworks = 'AVFoundation', 'CoreMedia', 'UIKit'
+  s.frameworks = 'AVFoundation', 'CoreMedia', 'UIKit', 'ShazamKit'
   s.pod_target_xcconfig = {
     'DEFINES_MODULE' => 'YES',
     'SWIFT_COMPILATION_MODE' => 'wholemodule'

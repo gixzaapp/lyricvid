@@ -74,8 +74,8 @@ export default function AboutScreen() {
             <Text style={styles.creditLink}>LRCLIB</Text>
           </Pressable>
           <Text style={[styles.creditLabel, { marginTop: 10 }]}>{t('about.songDetection')}</Text>
-          <Pressable onPress={() => Linking.openURL('https://audd.io')}>
-            <Text style={styles.creditLink}>AudD</Text>
+          <Pressable onPress={() => Linking.openURL('https://www.shazam.com')}>
+            <Text style={styles.creditLink}>Shazam</Text>
           </Pressable>
         </View>
       </View>

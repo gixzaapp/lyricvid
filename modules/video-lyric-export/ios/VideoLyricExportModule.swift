@@ -48,9 +48,19 @@ struct ExportOptions: Record {
 }
 
 public class VideoLyricExportModule: Module {
+  private var shazamMatcher: ShazamFileMatcher?
+
   public func definition() -> ModuleDefinition {
     Name("VideoLyricExport")
     Events("onExportProgress")
+
+    Constants([
+      "songRecognitionAvailable": true
+    ])
+
+    Function("isSongRecognitionAvailable") {
+      return true
+    }
 
     AsyncFunction("extractAudioClip") { (sourceUri: String, startSeconds: Double, durationSeconds: Double, promise: Promise) in
       DispatchQueue.global(qos: .userInitiated).async {
@@ -60,6 +70,27 @@ public class VideoLyricExportModule: Module {
         } catch {
           promise.reject("EXTRACT_FAILED", error.localizedDescription)
         }
+      }
+    }
+
+    AsyncFunction("recognizeSong") { (sourceUri: String, startSeconds: Double, durationSeconds: Double, developerToken: String?, promise: Promise) in
+      DispatchQueue.global(qos: .userInitiated).async {
+        var clipUrl: URL?
+        do {
+          let clipSeconds = min(12, max(6, durationSeconds))
+          let uri = try self.extractAudioClip(sourceUri, startSeconds: startSeconds, durationSeconds: clipSeconds)
+          clipUrl = self.url(from: uri)
+          let matcher = ShazamFileMatcher()
+          self.shazamMatcher = matcher
+          let match = try self.awaitShazam(matcher, clipUrl: clipUrl!)
+          promise.resolve(match)
+        } catch {
+          promise.reject("SHAZAM_FAILED", error.localizedDescription)
+        }
+        if let clipUrl, clipUrl.lastPathComponent.contains("lyricvid-detect-") {
+          try? FileManager.default.removeItem(at: clipUrl)
+        }
+        self.shazamMatcher = nil
       }
     }
 
@@ -130,6 +161,8 @@ public class VideoLyricExportModule: Module {
 
     if options.animation == "wheel" {
       addWheelLayers(options: options, parent: parent, center: center, width: width, fontSize: fontSize, duration: CMTimeGetSeconds(duration))
+    } else if isDepthAnimation(options.animation) {
+      addDepthLayers(options: options, parent: parent, center: center, width: width, fontSize: fontSize, duration: CMTimeGetSeconds(duration))
     } else {
     for cue in options.cues {
       let styled = attributed(cue, options: options, fontSize: fontSize, maxWidth: maxWidth)
@@ -354,6 +387,147 @@ public class VideoLyricExportModule: Module {
       fade.fillMode = .forwards
       fade.isRemovedOnCompletion = false
       layer.add(move, forKey: "roll")
+      layer.add(fade, forKey: "fade")
+      root.addSublayer(layer)
+    }
+    parent.addSublayer(root)
+  }
+
+  private func isDepthAnimation(_ id: String) -> Bool {
+    ["flip", "coverflow", "prism"].contains(id)
+  }
+
+  private struct DepthSlot {
+    let opacity: CGFloat
+    let scale: CGFloat
+    let tx: CGFloat
+    let ty: CGFloat
+    let rx: Double
+    let ry: Double
+    let hide: Bool
+  }
+
+  private func depthVisible(_ mode: String) -> Int {
+    mode == "flip" || mode == "prism" ? 1 : 2
+  }
+
+  private func depthSlot(_ mode: String, slot: Double, rowH: CGFloat, rowW: CGFloat) -> DepthSlot {
+    let distance = abs(slot)
+    switch mode {
+    case "flip":
+      let ry = slot * 90
+      return DepthSlot(
+        opacity: CGFloat(max(0, min(1, 1 - distance * 0.55))),
+        scale: 1,
+        tx: 0,
+        ty: 0,
+        rx: 0,
+        ry: ry,
+        hide: abs(cos(ry * .pi / 180)) < 0.12
+      )
+    case "coverflow":
+      return DepthSlot(
+        opacity: CGFloat(max(0.18, min(1, 1 - distance * 0.32))),
+        scale: CGFloat(max(0.64, min(1, 1 - distance * 0.16))),
+        tx: CGFloat(slot) * rowW * 0.38,
+        ty: CGFloat(abs(slot)) * rowH * 0.08,
+        rx: 0,
+        ry: -slot * 50,
+        hide: distance > 2.15
+      )
+    case "prism":
+      let ry = slot * 120
+      let facing = cos(ry * .pi / 180)
+      let hide = facing < 0.18 || distance > 0.95
+      return DepthSlot(
+        opacity: hide ? 0 : CGFloat(max(0.28, min(1, 1 - distance * 0.22))),
+        scale: 1,
+        tx: CGFloat(sin(ry * .pi / 180)) * rowW * 0.18,
+        ty: 0,
+        rx: 8,
+        ry: ry,
+        hide: hide
+      )
+    default:
+      return DepthSlot(opacity: 0, scale: 1, tx: 0, ty: 0, rx: 0, ry: 0, hide: true)
+    }
+  }
+
+  private func depthTransform(_ slot: DepthSlot) -> CATransform3D {
+    var transform = CATransform3DIdentity
+    transform.m34 = -1.0 / 800.0
+    transform = CATransform3DTranslate(transform, slot.tx, slot.ty, 0)
+    transform = CATransform3DRotate(transform, CGFloat(slot.ry * .pi / 180), 0, 1, 0)
+    transform = CATransform3DRotate(transform, CGFloat(slot.rx * .pi / 180), 1, 0, 0)
+    return CATransform3DScale(transform, slot.scale, slot.scale, 1)
+  }
+
+  private func depthTimes(index: Int, lines: [WheelLine], duration: Double) -> [(time: Double, offset: Double)] {
+    var points: [(time: Double, offset: Double)] = [(0, Double(index + 2))]
+    for (other, line) in lines.enumerated() {
+      let span = max(line.end - line.start, 0.12)
+      let hold = line.start + span * 0.62
+      points.append((line.start, Double(index - other)))
+      points.append((hold, Double(index - other)))
+      points.append((hold + span * 0.19, Double(index - other) - 0.5))
+      points.append((min(duration, line.end), Double(index - other) - 1))
+    }
+    return points.sorted { $0.time < $1.time }
+  }
+
+  private func addDepthLayers(
+    options: ExportOptions,
+    parent: CALayer,
+    center: CGPoint,
+    width: CGFloat,
+    fontSize: Double,
+    duration: Double
+  ) {
+    let lines = wheelLines(options.cues)
+    guard !lines.isEmpty else { return }
+    let mode = options.animation
+    let visible = depthVisible(mode)
+    let rowH = max(28, CGFloat(fontSize) * 1.35)
+    let boxW = mode == "coverflow" ? min(width * 0.96, 640) : min(width * 0.88, 520)
+    let boxH = rowH * CGFloat(visible * 2 + 1) + 16
+    let root = CALayer()
+    root.frame = CGRect(x: center.x - boxW / 2, y: center.y - boxH / 2, width: boxW, height: boxH)
+    root.cornerRadius = 16
+    root.masksToBounds = !(mode == "flip" || mode == "coverflow" || mode == "prism")
+    if let background = options.backgroundColor, let color = cssColor(background) {
+      root.backgroundColor = color.cgColor
+    } else {
+      root.backgroundColor = UIColor(white: 0.05, alpha: 0.42).cgColor
+    }
+    for (index, line) in lines.enumerated() {
+      let layer = CATextLayer()
+      layer.contentsScale = 2
+      layer.alignmentMode = alignment(options.align)
+      layer.isWrapped = false
+      layer.string = line.text
+      layer.fontSize = fontSize
+      layer.foregroundColor = (cssColor(options.color) ?? .white).cgColor
+      layer.frame = CGRect(x: 10, y: (boxH - rowH) / 2, width: boxW - 20, height: rowH)
+      layer.opacity = 0
+      layer.isDoubleSided = !(mode == "flip" || mode == "prism")
+      let times = depthTimes(index: index, lines: lines, duration: duration)
+      let keyTimes = times.map { NSNumber(value: $0.time / max(duration, 0.01)) }
+      let slots = times.map { depthSlot(mode, slot: $0.offset, rowH: rowH, rowW: boxW) }
+      let move = CAKeyframeAnimation(keyPath: "transform")
+      move.values = slots.map { NSValue(caTransform3D: depthTransform($0)) }
+      move.keyTimes = keyTimes
+      move.beginTime = AVCoreAnimationBeginTimeAtZero
+      move.duration = max(duration, 0.01)
+      move.fillMode = .forwards
+      move.isRemovedOnCompletion = false
+      let fade = CAKeyframeAnimation(keyPath: "opacity")
+      fade.values = slots.map { $0.hide ? 0 : $0.opacity }
+      fade.keyTimes = keyTimes
+      fade.beginTime = AVCoreAnimationBeginTimeAtZero
+      fade.duration = max(duration, 0.01)
+      fade.fillMode = .forwards
+      fade.isRemovedOnCompletion = false
+      layer.add(move, forKey: "depth")
       layer.add(fade, forKey: "fade")
       root.addSublayer(layer)
     }
@@ -679,6 +853,27 @@ public class VideoLyricExportModule: Module {
     case "right": return .right
     default: return .center
     }
+  }
+
+  private func awaitShazam(_ matcher: ShazamFileMatcher, clipUrl: URL) throws -> [String: String]? {
+    let lock = DispatchSemaphore(value: 0)
+    var match: [String: String]?
+    var failure: Error?
+    Task {
+      do {
+        match = try await matcher.recognize(clipUrl: clipUrl)
+      } catch {
+        failure = error
+      }
+      lock.signal()
+    }
+    if lock.wait(timeout: .now() + 30) == .timedOut {
+      throw NSError(domain: "VideoLyricExport", code: 17, userInfo: [NSLocalizedDescriptionKey: "detect.requestFailed"])
+    }
+    if let failure {
+      throw failure
+    }
+    return match
   }
 
   private func extractAudioClip(_ sourceUri: String, startSeconds: Double, durationSeconds: Double) throws -> String {

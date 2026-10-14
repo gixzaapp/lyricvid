@@ -22,7 +22,9 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.BitmapOverlay
 import androidx.media3.effect.StaticOverlaySettings
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.ceil
+import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
@@ -65,6 +67,9 @@ class LyricBitmapOverlay(
     val seconds = presentationTimeUs / 1_000_000.0
     if (options.animation == "wheel") {
       return drawWheel(seconds)
+    }
+    if (isDepthAnimation(options.animation)) {
+      return drawDepth(seconds)
     }
     val cue = options.cues.lastOrNull { seconds >= it.start && seconds < it.end && it.text.isNotBlank() }
       ?: return emptyBitmap
@@ -223,7 +228,7 @@ class LyricBitmapOverlay(
       "glow" -> MotionSpec(0.3, 0.2, 0.0, 0.0, 0.96f)
       "bounce" -> MotionSpec(0.4, 0.18, 2.8, 0.0, 0.8f, 0f, true)
       "float" -> MotionSpec(0.3, 0.2, 1.1, 0.0, 0.97f)
-      "wheel" -> MotionSpec(0.0, 0.0, 0.0, 0.0, 1f)
+      "wheel", "flip", "coverflow", "prism" -> MotionSpec(0.0, 0.0, 0.0, 0.0, 1f)
       else -> MotionSpec(0.28, 0.2, 1.4, 0.0, 0.94f)
     }
     if ((options.animation == "slide" || options.animation == "fly") && options.align == "right") {
@@ -416,6 +421,119 @@ class LyricBitmapOverlay(
       val cy = height / 2f + slot * rowH
       canvas.translate(10f * overlayScale, cy - layout.height / 2f)
       canvas.scale(scale, scale, (width / 2f) - 10f * overlayScale, layout.height / 2f)
+      layout.draw(canvas)
+      canvas.restore()
+    }
+    return out
+  }
+
+  private data class DepthSlot(
+    val opacity: Float,
+    val scale: Float,
+    val tx: Float,
+    val ty: Float,
+    val rx: Float,
+    val ry: Float,
+    val hide: Boolean,
+  )
+
+  private fun isDepthAnimation(id: String): Boolean {
+    return id == "flip" || id == "coverflow" || id == "prism"
+  }
+
+  private fun depthVisible(mode: String): Int {
+    return if (mode == "flip" || mode == "prism") 1 else 2
+  }
+
+  private fun depthSlot(mode: String, slot: Float, rowH: Float, rowW: Float): DepthSlot {
+    val distance = abs(slot)
+    return when (mode) {
+      "flip" -> {
+        val ry = slot * 90f
+        DepthSlot((1f - distance * 0.55f).coerceIn(0f, 1f), 1f, 0f, 0f, 0f, ry, abs(cos(ry * PI / 180.0)) < 0.12)
+      }
+      "coverflow" -> DepthSlot(
+        (1f - distance * 0.32f).coerceIn(0.18f, 1f),
+        (1f - distance * 0.16f).coerceIn(0.64f, 1f),
+        slot * rowW * 0.38f,
+        abs(slot) * rowH * 0.08f,
+        0f,
+        -slot * 50f,
+        distance > 2.15f,
+      )
+      "prism" -> {
+        val ry = slot * 120f
+        val facing = cos(ry * PI / 180.0)
+        val hide = facing < 0.18 || distance > 0.95f
+        DepthSlot(
+          if (hide) 0f else (1f - distance * 0.22f).coerceIn(0.28f, 1f),
+          1f,
+          sin(ry * PI / 180.0).toFloat() * rowW * 0.18f,
+          0f,
+          8f,
+          ry,
+          hide,
+        )
+      }
+      else -> DepthSlot(0f, 1f, 0f, 0f, 0f, 0f, true)
+    }
+  }
+
+  private fun drawDepth(seconds: Double): Bitmap {
+    val lines = wheelLines()
+    if (lines.isEmpty()) {
+      return emptyBitmap
+    }
+    val index = lines.indexOfLast { seconds >= it.start }
+    if (index < 0) {
+      return emptyBitmap
+    }
+    val current = lines[index]
+    val span = (current.end - current.start).coerceAtLeast(0.12)
+    val progress = ((seconds - current.start) / span).coerceIn(0.0, 1.0)
+    val slide = if (progress <= 0.62) 0.0 else (progress - 0.62) / 0.38
+    val position = index + slide
+    val mode = options.animation
+    val visible = depthVisible(mode)
+    val rowH = (fontPx * 1.35f).coerceAtLeast(28f)
+    val widthFactor = if (mode == "coverflow") 0.96f else 0.88f
+    val width = max(2, (videoWidth * widthFactor).toInt())
+    val height = max(2, (rowH * (visible * 2 + 1) + 16f * overlayScale).toInt())
+    val out = nextLive(width, height)
+    val canvas = Canvas(out)
+    val bg = options.backgroundColor?.let { parseCssColor(it, Color.TRANSPARENT) } ?: Color.argb(108, 10, 10, 16)
+    if (Color.alpha(bg) > 0) {
+      val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = bg }
+      canvas.drawRoundRect(RectF(0f, 0f, width.toFloat(), height.toFloat()), 16f * overlayScale, 16f * overlayScale, fill)
+    }
+    val paint = TextPaint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply {
+      textSize = fontPx
+      color = parseCssColor(options.color, Color.WHITE)
+      typeface = typefaceFor(current.text)
+      if (options.outline) {
+        setShadowLayer(3f * overlayScale, 0f, 1f * overlayScale, Color.BLACK)
+      }
+    }
+    val alignment = when (options.align) {
+      "left" -> Layout.Alignment.ALIGN_NORMAL
+      "right" -> Layout.Alignment.ALIGN_OPPOSITE
+      else -> Layout.Alignment.ALIGN_CENTER
+    }
+    val first = max(0, kotlin.math.floor(position - visible).toInt())
+    val last = min(lines.lastIndex, kotlin.math.ceil(position + visible).toInt())
+    val textWidth = (width - 20 * overlayScale).toInt().coerceAtLeast(1)
+    for (lineIndex in first..last) {
+      val slot = (lineIndex - position).toFloat()
+      val look = depthSlot(mode, slot, rowH, width.toFloat())
+      if (look.hide || look.opacity <= 0.02f) continue
+      paint.alpha = (look.opacity * 255).toInt().coerceIn(0, 255)
+      val layout = layoutFor(lines[lineIndex].text, paint, textWidth, alignment)
+      canvas.save()
+      val cy = height / 2f + look.ty
+      val squashX = abs(cos(look.ry * PI / 180.0)).toFloat().coerceAtLeast(0.12f)
+      val squashY = abs(cos(look.rx * PI / 180.0)).toFloat().coerceAtLeast(0.18f)
+      canvas.translate(10f * overlayScale + look.tx, cy - layout.height / 2f)
+      canvas.scale(look.scale * squashX, look.scale * squashY, textWidth / 2f, layout.height / 2f)
       layout.draw(canvas)
       canvas.restore()
     }

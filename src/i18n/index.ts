@@ -13,6 +13,7 @@ import ml from '@/i18n/locales/ml.json';
 import nl from '@/i18n/locales/nl.json';
 import pt from '@/i18n/locales/pt.json';
 import ptBR from '@/i18n/locales/pt-BR.json';
+import si from '@/i18n/locales/si.json';
 import ta from '@/i18n/locales/ta.json';
 import te from '@/i18n/locales/te.json';
 import th from '@/i18n/locales/th.json';
@@ -33,6 +34,7 @@ const DICTS: Record<LocaleCode, Dictionary> = {
   hi: hi as Dictionary,
   ur: ur as Dictionary,
   ta: ta as Dictionary,
+  si: si as Dictionary,
   te: te as Dictionary,
   kn: kn as Dictionary,
   id: id as Dictionary,
