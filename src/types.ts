@@ -23,12 +23,14 @@ export type LyricAnimationId =
   | 'sparkle'
   | 'fly'
   | 'glow'
+  | 'neon'
   | 'bounce'
   | 'float'
   | 'wheel'
   | 'flip'
   | 'coverflow'
-  | 'prism';
+  | 'prism'
+  | 'chat';
 
 export type SubtitleStyle = {
   fontFamily: string;

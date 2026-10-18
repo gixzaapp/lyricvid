@@ -1,6 +1,8 @@
 import af from '@/i18n/locales/af.json';
+import bn from '@/i18n/locales/bn.json';
 import de from '@/i18n/locales/de.json';
 import en from '@/i18n/locales/en.json';
+import es from '@/i18n/locales/es.json';
 import fil from '@/i18n/locales/fil.json';
 import fr from '@/i18n/locales/fr.json';
 import hi from '@/i18n/locales/hi.json';
@@ -32,6 +34,7 @@ const DICTS: Record<LocaleCode, Dictionary> = {
   en,
   ml: ml as Dictionary,
   hi: hi as Dictionary,
+  bn: bn as Dictionary,
   ur: ur as Dictionary,
   ta: ta as Dictionary,
   si: si as Dictionary,
@@ -39,6 +42,7 @@ const DICTS: Record<LocaleCode, Dictionary> = {
   kn: kn as Dictionary,
   id: id as Dictionary,
   it: it as Dictionary,
+  es: es as Dictionary,
   fr: fr as Dictionary,
   de: de as Dictionary,
   pt: pt as Dictionary,

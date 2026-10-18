@@ -161,6 +161,8 @@ public class VideoLyricExportModule: Module {
 
     if options.animation == "wheel" {
       addWheelLayers(options: options, parent: parent, center: center, width: width, fontSize: fontSize, duration: CMTimeGetSeconds(duration))
+    } else if options.animation == "chat" {
+      addChatLayers(options: options, parent: parent, center: center, width: width, fontSize: fontSize, duration: CMTimeGetSeconds(duration))
     } else if isDepthAnimation(options.animation) {
       addDepthLayers(options: options, parent: parent, center: center, width: width, fontSize: fontSize, duration: CMTimeGetSeconds(duration))
     } else {
@@ -171,8 +173,9 @@ public class VideoLyricExportModule: Module {
         options: [.usesLineFragmentOrigin, .usesFontLeading],
         context: nil
       )
-      let boxWidth = min(maxWidth, max(ceil(bounds.width) + 20, 8))
-      let boxHeight = max(ceil(bounds.height) + 12, CGFloat(fontSize) + 12)
+      let neonPad: CGFloat = options.animation == "neon" ? 36 : 0
+      let boxWidth = min(maxWidth, max(ceil(bounds.width) + 20 + neonPad * 2, 8))
+      let boxHeight = max(ceil(bounds.height) + 12 + neonPad, CGFloat(fontSize) + 12 + neonPad)
       let layer = CATextLayer()
       layer.contentsScale = 2
       layer.alignmentMode = alignment(options.align)
@@ -198,6 +201,50 @@ public class VideoLyricExportModule: Module {
       animation.fillMode = .forwards
       animation.isRemovedOnCompletion = false
       layer.add(animation, forKey: "show")
+      if options.animation == "neon" {
+        let neonColor = cssColor(options.color) ?? .white
+        let glowText = neonSignString(cue, options: options, fontSize: fontSize, color: neonColor)
+        let far = CATextLayer()
+        far.contentsScale = 2
+        far.alignmentMode = layer.alignmentMode
+        far.isWrapped = true
+        far.string = glowText
+        far.frame = layer.frame
+        far.shadowColor = neonColor.cgColor
+        far.shadowRadius = 28
+        far.shadowOffset = .zero
+        far.shadowOpacity = 1
+        far.opacity = 0
+        far.add(animation, forKey: "show")
+        let mid = CATextLayer()
+        mid.contentsScale = 2
+        mid.alignmentMode = layer.alignmentMode
+        mid.isWrapped = true
+        mid.string = glowText
+        mid.frame = layer.frame
+        mid.shadowColor = neonColor.cgColor
+        mid.shadowRadius = 10
+        mid.shadowOffset = .zero
+        mid.shadowOpacity = 1
+        mid.opacity = 0
+        mid.add(animation, forKey: "show")
+        let pulse = CAKeyframeAnimation(keyPath: "opacity")
+        pulse.values = [0.55, 1, 0.7, 0.95, 0]
+        pulse.keyTimes = [0, 0.32, 0.68, 0.999, 1]
+        pulse.beginTime = animation.beginTime
+        pulse.duration = visible
+        pulse.fillMode = .forwards
+        pulse.isRemovedOnCompletion = false
+        far.add(pulse, forKey: "pulse")
+        mid.add(pulse, forKey: "pulse")
+        parent.addSublayer(far)
+        parent.addSublayer(mid)
+        layer.string = neonSignString(cue, options: options, fontSize: fontSize, color: .white)
+        layer.shadowColor = neonColor.cgColor
+        layer.shadowRadius = 6
+        layer.shadowOffset = .zero
+        layer.shadowOpacity = 1
+      }
       parent.addSublayer(layer)
     }
     }
@@ -267,10 +314,15 @@ public class VideoLyricExportModule: Module {
     var traits: UIFontDescriptor.SymbolicTraits = []
     if options.bold { traits.insert(.traitBold) }
     if options.italic { traits.insert(.traitItalic) }
-    let named = needsSystemFont(cue.text) ? nil : iosFontName(options.fontFamily)
+    let fontId = options.animation == "neon" ? "pacifico" : options.fontFamily
+    let named = needsSystemFont(cue.text) ? nil : iosFontName(fontId)
     let base = named.flatMap { UIFont(name: $0, size: fontSize) } ?? UIFont.systemFont(ofSize: fontSize)
-    let font = base.fontDescriptor.withSymbolicTraits(traits).map { UIFont(descriptor: $0, size: fontSize) } ?? base
-    let color = (cssColor(options.color) ?? .white).withAlphaComponent(0.72)
+    let font = options.animation == "neon"
+      ? base
+      : (base.fontDescriptor.withSymbolicTraits(traits).map { UIFont(descriptor: $0, size: fontSize) } ?? base)
+    let color = options.animation == "neon"
+      ? UIColor.white
+      : (cssColor(options.color) ?? .white).withAlphaComponent(0.72)
     let range = NSRange(location: 0, length: text.length)
     let paragraph = NSMutableParagraphStyle()
     paragraph.alignment = nsAlign(options.align)
@@ -328,10 +380,30 @@ public class VideoLyricExportModule: Module {
     case "typewriter": return "AmericanTypewriter-Semibold"
     case "mono": return "Menlo-Bold"
     case "script": return "Noteworthy-Bold"
+    case "dancing": return "DancingScript"
+    case "elegant": return "GreatVibes-Regular"
+    case "pacifico": return "Pacifico-Regular"
+    case "parisienne": return "Parisienne-Regular"
+    case "signature": return "Allura-Regular"
     case "marker": return "MarkerFelt-Wide"
     case "smallcaps": return "Copperplate-Bold"
     default: return nil
     }
+  }
+
+  private func neonSignString(_ cue: LyricCue, options: ExportOptions, fontSize: Double, color: UIColor) -> NSAttributedString {
+    let result = NSMutableAttributedString(string: cue.text)
+    let named = needsSystemFont(cue.text) ? nil : iosFontName("pacifico")
+    let font = named.flatMap { UIFont(name: $0, size: fontSize) } ?? UIFont.systemFont(ofSize: fontSize)
+    let paragraph = NSMutableParagraphStyle()
+    paragraph.alignment = nsAlign(options.align)
+    paragraph.lineBreakMode = .byWordWrapping
+    result.addAttributes([
+      .font: font,
+      .foregroundColor: color,
+      .paragraphStyle: paragraph,
+    ], range: NSRange(location: 0, length: (cue.text as NSString).length))
+    return result
   }
 
   private func addWheelLayers(
@@ -389,6 +461,106 @@ public class VideoLyricExportModule: Module {
       layer.add(move, forKey: "roll")
       layer.add(fade, forKey: "fade")
       root.addSublayer(layer)
+    }
+    parent.addSublayer(root)
+  }
+
+  private func addChatLayers(
+    options: ExportOptions,
+    parent: CALayer,
+    center: CGPoint,
+    width: CGFloat,
+    fontSize: Double,
+    duration: Double
+  ) {
+    let lines = wheelLines(options.cues)
+    guard !lines.isEmpty else { return }
+    let boxW = min(width * 0.88, 520)
+    let gap: CGFloat = 8
+    let padX: CGFloat = 14
+    let padY: CGFloat = 9
+    let maxInner = max(24, boxW * 0.78 - padX * 2)
+    func bubbleSize(_ text: String) -> CGSize {
+      let font = UIFont.systemFont(ofSize: fontSize, weight: .semibold)
+      let bounds = (text as NSString).boundingRect(
+        with: CGSize(width: maxInner, height: .greatestFiniteMagnitude),
+        options: [.usesLineFragmentOrigin, .usesFontLeading],
+        attributes: [.font: font],
+        context: nil
+      )
+      return CGSize(width: min(boxW * 0.78, ceil(bounds.width) + padX * 2), height: max(ceil(bounds.height) + padY * 2, CGFloat(fontSize) + padY * 2))
+    }
+    let sizes = lines.map { bubbleSize($0.text) }
+    let visibleCount = 4
+    let boxH = sizes.suffix(visibleCount).reduce(CGFloat(0)) { $0 + $1.height } + gap * CGFloat(visibleCount - 1) + 8
+    let root = CALayer()
+    root.frame = CGRect(x: center.x - boxW / 2, y: center.y - boxH / 2, width: boxW, height: boxH)
+    root.masksToBounds = false
+    let outgoingColor = options.backgroundColor.flatMap { cssColor($0) } ?? UIColor(red: 10 / 255, green: 132 / 255, blue: 1, alpha: 1)
+    let incomingColor = UIColor(red: 232 / 255, green: 232 / 255, blue: 237 / 255, alpha: 1)
+    let outgoingText = cssColor(options.color) ?? .white
+    let incomingText = UIColor(red: 28 / 255, green: 28 / 255, blue: 30 / 255, alpha: 1)
+
+    for (index, line) in lines.enumerated() {
+      let outgoing = index % 2 == 1
+      let size = sizes[index]
+      let bubble = CALayer()
+      bubble.backgroundColor = (outgoing ? outgoingColor : incomingColor).cgColor
+      bubble.cornerRadius = 18
+      bubble.masksToBounds = true
+      bubble.opacity = 0
+      let text = CATextLayer()
+      text.contentsScale = 2
+      text.isWrapped = true
+      text.alignmentMode = .left
+      text.string = line.text
+      text.fontSize = fontSize
+      text.foregroundColor = (outgoing ? outgoingText : incomingText).cgColor
+      text.frame = CGRect(x: padX, y: padY, width: size.width - padX * 2, height: size.height - padY * 2)
+      bubble.addSublayer(text)
+      bubble.frame = CGRect(x: outgoing ? boxW - size.width - 4 : 4, y: boxH - size.height, width: size.width, height: size.height)
+
+      var times: [NSNumber] = [0]
+      var opacities: [NSNumber] = [0]
+      var ys: [NSNumber] = [NSNumber(value: Double(boxH + size.height))]
+      for (other, otherLine) in lines.enumerated() {
+        let first = max(0, other - (visibleCount - 1))
+        let visible = index >= first && index <= other
+        var y = boxH
+        if visible {
+          for shown in first...other {
+            y -= sizes[shown].height
+            if shown == index { break }
+            y -= gap
+          }
+        } else {
+          y = boxH + size.height
+        }
+        times.append(NSNumber(value: otherLine.start / max(duration, 0.01)))
+        opacities.append(NSNumber(value: visible ? 1 : 0))
+        ys.append(NSNumber(value: Double(y + size.height / 2)))
+      }
+      times.append(1)
+      opacities.append(opacities.last ?? 0)
+      ys.append(ys.last ?? NSNumber(value: Double(boxH)))
+
+      let fade = CAKeyframeAnimation(keyPath: "opacity")
+      fade.values = opacities
+      fade.keyTimes = times
+      fade.beginTime = AVCoreAnimationBeginTimeAtZero
+      fade.duration = max(duration, 0.01)
+      fade.fillMode = .forwards
+      fade.isRemovedOnCompletion = false
+      let move = CAKeyframeAnimation(keyPath: "position.y")
+      move.values = ys
+      move.keyTimes = times
+      move.beginTime = AVCoreAnimationBeginTimeAtZero
+      move.duration = max(duration, 0.01)
+      move.fillMode = .forwards
+      move.isRemovedOnCompletion = false
+      bubble.add(fade, forKey: "fade")
+      bubble.add(move, forKey: "stack")
+      root.addSublayer(bubble)
     }
     parent.addSublayer(root)
   }
@@ -589,11 +761,15 @@ public class VideoLyricExportModule: Module {
         let tall = box * 0.7
         root.frame = CGRect(x: center.x - wide / 2, y: center.y - tall / 2, width: wide, height: tall)
         addPlayerLayer(to: root, sticker: sticker, duration: duration)
+      } else if sticker.kind == "cassette" {
+        let factor = scale * CGFloat(sticker.scale)
+        let wide = 128 * factor
+        let tall = 68 * factor
+        root.frame = CGRect(x: center.x - wide / 2, y: center.y - tall / 2, width: wide, height: tall)
+        addCassetteLayer(to: root, title: sticker.title)
       } else {
         root.frame = CGRect(x: center.x - box / 2, y: center.y - box / 2, width: box, height: box)
         switch sticker.kind {
-        case "cassette":
-          addCassetteLayer(to: root, title: sticker.title, box: box)
         case "music":
           addMusicLayer(to: root, title: sticker.title, box: box)
         default:
@@ -632,28 +808,38 @@ public class VideoLyricExportModule: Module {
     root.addSublayer(disc)
   }
 
-  private func addCassetteLayer(to root: CALayer, title: String, box: CGFloat) {
+  private func addCassetteLayer(to root: CALayer, title: String) {
+    let s = max(root.bounds.width / 128, 0.5)
     let body = CALayer()
-    body.frame = CGRect(x: box * 0.04, y: box * 0.18, width: box * 0.92, height: box * 0.64)
-    body.cornerRadius = 10
+    body.frame = root.bounds
+    body.cornerRadius = 10 * s
     body.backgroundColor = UIColor(red: 0.11, green: 0.14, blue: 0.22, alpha: 1).cgColor
-    body.borderWidth = 1
+    body.borderWidth = 1 * s
     body.borderColor = UIColor(red: 0.44, green: 0.48, blue: 0.6, alpha: 1).cgColor
     let titleLayer = CATextLayer()
     titleLayer.contentsScale = 2
     titleLayer.alignmentMode = .center
+    titleLayer.truncationMode = .end
     titleLayer.string = title
-    titleLayer.fontSize = max(8, box * 0.08)
+    titleLayer.fontSize = 9 * s
     titleLayer.foregroundColor = UIColor(red: 0.96, green: 0.91, blue: 0.78, alpha: 1).cgColor
-    titleLayer.frame = CGRect(x: 6, y: 6, width: body.bounds.width - 12, height: 16)
+    titleLayer.frame = CGRect(x: 8 * s, y: 8 * s, width: body.bounds.width - 16 * s, height: 12 * s)
     body.addSublayer(titleLayer)
-    for x in [body.bounds.width * 0.25, body.bounds.width * 0.75] {
+    let windowH = 34 * s
+    let pad = 8 * s
+    let window = CALayer()
+    window.frame = CGRect(x: pad, y: body.bounds.height - pad - windowH, width: body.bounds.width - pad * 2, height: windowH)
+    window.cornerRadius = 6 * s
+    window.backgroundColor = UIColor(red: 0.04, green: 0.06, blue: 0.13, alpha: 1).cgColor
+    body.addSublayer(window)
+    let reelSize: CGFloat = 22 * s
+    for x in [window.bounds.width * 0.22, window.bounds.width * 0.78] {
       let reel = CALayer()
-      reel.bounds = CGRect(x: 0, y: 0, width: box * 0.16, height: box * 0.16)
-      reel.position = CGPoint(x: x, y: body.bounds.height * 0.62)
-      reel.cornerRadius = reel.bounds.width / 2
+      reel.bounds = CGRect(x: 0, y: 0, width: reelSize, height: reelSize)
+      reel.position = CGPoint(x: x, y: window.bounds.height / 2)
+      reel.cornerRadius = reelSize / 2
       reel.backgroundColor = UIColor(red: 0.23, green: 0.16, blue: 0.09, alpha: 1).cgColor
-      reel.borderWidth = 2
+      reel.borderWidth = 2 * s
       reel.borderColor = UIColor(red: 0.79, green: 0.64, blue: 0.42, alpha: 1).cgColor
       let spin = CABasicAnimation(keyPath: "transform.rotation.z")
       spin.fromValue = 0
@@ -661,8 +847,13 @@ public class VideoLyricExportModule: Module {
       spin.duration = 2.2
       spin.repeatCount = .infinity
       reel.add(spin, forKey: "spin")
-      body.addSublayer(reel)
+      window.addSublayer(reel)
     }
+    let tape = CALayer()
+    tape.frame = CGRect(x: window.bounds.midX - 14 * s, y: window.bounds.midY - 2 * s, width: 28 * s, height: 4 * s)
+    tape.cornerRadius = 2 * s
+    tape.backgroundColor = UIColor(red: 0.42, green: 0.27, blue: 0.14, alpha: 1).cgColor
+    window.addSublayer(tape)
     root.addSublayer(body)
   }
 
@@ -795,35 +986,46 @@ public class VideoLyricExportModule: Module {
   }
 
   private func addMusicLayer(to root: CALayer, title: String, box: CGFloat) {
+    let ringSize = box * (120.0 / 128.0)
     let ring = CALayer()
-    ring.frame = CGRect(x: box * 0.04, y: 0, width: box * 0.92, height: box * 0.72)
+    ring.frame = CGRect(x: (box - ringSize) / 2, y: 0, width: ringSize, height: ringSize)
     let spikes = 72
+    let s = ringSize / 120
     let cx = ring.bounds.midX
     let cy = ring.bounds.midY
-    let inner = min(ring.bounds.width, ring.bounds.height) * 0.22
-    let maxH = min(ring.bounds.width, ring.bounds.height) * 0.2
+    let inner = 28 * s
     for index in 0..<spikes {
-      let angle = CGFloat(index) / CGFloat(spikes) * .pi * 2
+      let pulseIndex = (index * 3) % 18
+      let minH = (3 + CGFloat(index % 4)) * s
+      let maxH = (16 + CGFloat(index % 13)) * s
       let holder = CALayer()
-      holder.bounds = CGRect(x: 0, y: 0, width: 2, height: maxH)
-      holder.position = CGPoint(x: cx + cos(angle) * inner, y: cy + sin(angle) * inner)
-      holder.transform = CATransform3DMakeRotation(angle - .pi / 2, 0, 0, 1)
+      holder.bounds = CGRect(x: 0, y: 0, width: 1.5 * s, height: ringSize)
+      holder.position = CGPoint(x: cx, y: cy)
+      holder.transform = CATransform3DMakeRotation(CGFloat(index) / CGFloat(spikes) * .pi * 2, 0, 0, 1)
       let spike = CALayer()
-      spike.anchorPoint = CGPoint(x: 0.5, y: 0)
-      spike.bounds = CGRect(x: 0, y: 0, width: 1.6, height: maxH)
-      spike.position = CGPoint(x: holder.bounds.midX, y: 0)
+      spike.anchorPoint = CGPoint(x: 0.5, y: 1)
+      spike.bounds = CGRect(x: 0, y: 0, width: 1.5 * s, height: maxH)
+      spike.position = CGPoint(x: holder.bounds.midX, y: ringSize / 2 - inner)
       spike.backgroundColor = UIColor(white: 0.96, alpha: 1).cgColor
-      spike.cornerRadius = 0.8
-      let pulse = CAKeyframeAnimation(keyPath: "transform.scale.y")
-      let base: [CGFloat] = [0.18, 0.72, 0.3, 0.95, 0.42, 0.8, 0.22, 0.66]
-      pulse.values = (0..<8).map { step in
-        base[(index * 3 + step * 5) % base.count]
+      spike.cornerRadius = 0.75 * s
+      let timing = musicPulseTiming(pulseIndex)
+      let period = timing.down + timing.up
+      let steps = 16
+      var values: [CGFloat] = []
+      var keyTimes: [NSNumber] = []
+      for step in 0...steps {
+        let time = Double(step) / Double(steps) * period
+        let pulse = musicPulseValue(timing, time: time)
+        values.append((minH + CGFloat(pulse) * (maxH - minH)) / maxH)
+        keyTimes.append(NSNumber(value: Double(step) / Double(steps)))
       }
-      pulse.keyTimes = [0, 0.14, 0.28, 0.42, 0.56, 0.7, 0.85, 1]
-      pulse.duration = 1.05 + Double(index % 7) * 0.09
-      pulse.repeatCount = .infinity
-      pulse.calculationMode = .linear
-      spike.add(pulse, forKey: "pulse")
+      let pulseAnim = CAKeyframeAnimation(keyPath: "transform.scale.y")
+      pulseAnim.values = values
+      pulseAnim.keyTimes = keyTimes
+      pulseAnim.duration = period
+      pulseAnim.repeatCount = .infinity
+      pulseAnim.calculationMode = .linear
+      spike.add(pulseAnim, forKey: "pulse")
       holder.addSublayer(spike)
       ring.addSublayer(holder)
     }
@@ -835,8 +1037,42 @@ public class VideoLyricExportModule: Module {
     titleLayer.string = title
     titleLayer.fontSize = max(9, box * 0.09)
     titleLayer.foregroundColor = UIColor.white.cgColor
-    titleLayer.frame = CGRect(x: 4, y: box * 0.74, width: box - 8, height: box * 0.24)
+    titleLayer.frame = CGRect(x: 4, y: ring.frame.maxY + 4, width: box - 8, height: max(16, box - ring.frame.maxY - 4))
     root.addSublayer(titleLayer)
+  }
+
+  private struct MusicPulseTiming {
+    let low: Double
+    let high: Double
+    let down: Double
+    let up: Double
+  }
+
+  private func musicPulseTiming(_ index: Int) -> MusicPulseTiming {
+    MusicPulseTiming(
+      low: 0.18 + Double((index * 11) % 28) / 100,
+      high: 0.55 + Double((index * 7) % 45) / 100,
+      down: (130.0 + Double((index * 2) % 5) * 28) / 1000,
+      up: (160.0 + Double(index % 6) * 35) / 1000
+    )
+  }
+
+  private func musicPulseValue(_ timing: MusicPulseTiming, time: Double) -> Double {
+    let period = timing.down + timing.up
+    let t = time.truncatingRemainder(dividingBy: period)
+    if t < timing.down {
+      return lerp(timing.high, timing.low, easeInOutQuad(t / timing.down))
+    }
+    return lerp(timing.low, timing.high, easeInOutQuad((t - timing.down) / timing.up))
+  }
+
+  private func lerp(_ from: Double, _ to: Double, _ amount: Double) -> Double {
+    from + (to - from) * amount
+  }
+
+  private func easeInOutQuad(_ x: Double) -> Double {
+    let t = min(1, max(0, x))
+    return t < 0.5 ? 2 * t * t : 1 - pow(-2 * t + 2, 2.0) / 2
   }
 
   private func alignment(_ value: String) -> CATextLayerAlignmentMode {

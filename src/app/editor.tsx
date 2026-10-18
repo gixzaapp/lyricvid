@@ -105,23 +105,20 @@ export default function EditorScreen() {
                   if (!sourceUri) {
                     throw new Error('editor.pickVideo');
                   }
-                  const { match, tracks } = await detectSongFromMedia({
+                  const { tracks } = await detectSongFromMedia({
                     sourceUri,
                     currentTime: 0,
                     mediaDuration: project.videoDuration,
                   });
                   if (!tracks[0]) {
                     showResult = () => {
-                      Alert.alert(
-                        t('detect.noLyricsTitle'),
-                        t('detect.noLyricsBody', { artist: match.artist, title: match.title }),
-                      );
+                      Alert.alert(t('detect.noLyricsTitle'), t('detect.noLyricsBody'));
                     };
                   } else {
                     const full = await getLyricsById(tracks[0].id);
                     applyTrack(full);
                     showResult = () => {
-                      Alert.alert(t('detect.loadedTitle'), `${match.artist} — ${match.title}`);
+                      Alert.alert(t('detect.loadedTitle'), t('detect.loadedBody'));
                     };
                   }
                 } catch (error) {

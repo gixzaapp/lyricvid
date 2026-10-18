@@ -4,11 +4,13 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 
+import { ChatLyricOverlay } from '@/components/ChatLyricOverlay';
 import { DepthLyricOverlay } from '@/components/DepthLyricOverlay';
 import { LyricOverlay } from '@/components/LyricOverlay';
 import { StickerOverlay } from '@/components/StickerOverlay';
 import { WheelLyricOverlay } from '@/components/WheelLyricOverlay';
 import { PlaybackBar } from '@/components/PlaybackBar';
+import { isChatStyle } from '@/lib/lyricChat';
 import { isDepthStyle } from '@/lib/lyricDepth';
 import { getActiveLineIndex, getVisibleLineWords, lineEndTime } from '@/lib/lyrics';
 import { useT } from '@/store/locale';
@@ -211,6 +213,15 @@ export const VideoStage = forwardRef<VideoStageHandle, Props>(function VideoStag
             currentTime={currentTime}
             offset={offset}
             duration={duration}
+            placeholder={t('stage.placeholder')}
+            styleConfig={style}
+            onPositionChange={setPosition}
+          />
+        ) : isChatStyle(style.animation) ? (
+          <ChatLyricOverlay
+            lyrics={lyrics}
+            currentTime={currentTime}
+            offset={offset}
             placeholder={t('stage.placeholder')}
             styleConfig={style}
             onPositionChange={setPosition}

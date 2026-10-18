@@ -3,7 +3,7 @@ import type { LyricAnimationId } from '@/types';
 export type { LyricAnimationId };
 
 export type LyricEnterEase = 'cubic' | 'back';
-export type LyricLoopId = 'none' | 'float' | 'glow' | 'sparkle';
+export type LyricLoopId = 'none' | 'float' | 'glow' | 'neon' | 'sparkle';
 
 export type LyricMotionConfig = {
   id: LyricAnimationId;
@@ -31,12 +31,14 @@ export const ANIMATION_PRESETS: { id: LyricAnimationId; mark: string }[] = [
   { id: 'sparkle', mark: '✦' },
   { id: 'fly', mark: '✈' },
   { id: 'glow', mark: '◉' },
+  { id: 'neon', mark: '⚡' },
   { id: 'bounce', mark: '↕' },
   { id: 'float', mark: '˜' },
   { id: 'wheel', mark: '☰' },
   { id: 'flip', mark: '⟳' },
   { id: 'coverflow', mark: '⇆' },
   { id: 'prism', mark: '△' },
+  { id: 'chat', mark: '💬' },
 ];
 
 const MOTION: Record<LyricAnimationId, Omit<LyricMotionConfig, 'id'>> = {
@@ -170,6 +172,19 @@ const MOTION: Record<LyricAnimationId, Omit<LyricMotionConfig, 'id'>> = {
     loop: 'glow',
     sparkle: false,
   },
+  neon: {
+    fadeIn: 0.28,
+    fadeOut: 0.2,
+    fromY: 0,
+    fromX: 0,
+    scaleFrom: 0.98,
+    risePercent: 0,
+    slidePercent: 0,
+    rotateFrom: 0,
+    enterEase: 'cubic',
+    loop: 'neon',
+    sparkle: false,
+  },
   bounce: {
     fadeIn: 0.4,
     fadeOut: 0.18,
@@ -236,6 +251,19 @@ const MOTION: Record<LyricAnimationId, Omit<LyricMotionConfig, 'id'>> = {
     sparkle: false,
   },
   prism: {
+    fadeIn: 0,
+    fadeOut: 0,
+    fromY: 0,
+    fromX: 0,
+    scaleFrom: 1,
+    risePercent: 0,
+    slidePercent: 0,
+    rotateFrom: 0,
+    enterEase: 'cubic',
+    loop: 'none',
+    sparkle: false,
+  },
+  chat: {
     fadeIn: 0,
     fadeOut: 0,
     fromY: 0,
@@ -327,6 +355,13 @@ export function sparkleTwinkle(time: number, index: number, speed: number) {
 
 export function glowPulse(time: number, speed: number) {
   return 0.5 + 0.5 * Math.sin(time * 3.6 * clampAnimationSpeed(speed));
+}
+
+export function neonPulse(time: number, speed: number) {
+  const rate = clampAnimationSpeed(speed);
+  const swell = 0.55 + 0.45 * Math.sin(time * 2.2 * rate);
+  const flicker = 0.9 + 0.1 * Math.sin(time * 17 * rate);
+  return swell * flicker;
 }
 
 export function floatOffset(time: number, speed: number, amplitude = 7) {

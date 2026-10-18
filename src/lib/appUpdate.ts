@@ -97,8 +97,15 @@ function parseManifest(raw: unknown): AppUpdateManifest | null {
 }
 
 export async function fetchUpdateManifest() {
-  const url = extraConfig().manifestUrl || DEFAULT_MANIFEST_URL;
-  const response = await fetch(url, { headers: { Accept: 'application/json' } });
+  const base = extraConfig().manifestUrl || DEFAULT_MANIFEST_URL;
+  const url = `${base}${base.includes('?') ? '&' : '?'}_=${Date.now()}`;
+  const response = await fetch(url, {
+    headers: {
+      Accept: 'application/json',
+      'Cache-Control': 'no-cache',
+      Pragma: 'no-cache',
+    },
+  });
   if (!response.ok) {
     throw keyedError('update.checkFailedStatus', { status: response.status });
   }

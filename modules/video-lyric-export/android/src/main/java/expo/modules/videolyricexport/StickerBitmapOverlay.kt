@@ -34,6 +34,7 @@ class StickerBitmapOverlay(
     val (baseW, baseH) = when (sticker.kind) {
       "beats" -> 220f to 86f
       "player" -> 268f to 92f
+      "cassette" -> 128f to 68f
       else -> 120f to 148f
     }
     val width = max(2, (baseW * scale).toInt())
@@ -85,26 +86,33 @@ class StickerBitmapOverlay(
   }
 
   private fun drawCassette(canvas: Canvas, width: Int, height: Int, scale: Float, seconds: Double) {
-    val pad = 6f * scale
-    val body = RectF(pad, pad, width - pad, height - pad)
+    val pad = 8f * scale
+    val body = RectF(0.5f * scale, 0.5f * scale, width - 0.5f * scale, height - 0.5f * scale)
     val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     paint.color = Color.parseColor("#1C2438")
     canvas.drawRoundRect(body, 10f * scale, 10f * scale, paint)
     paint.style = Paint.Style.STROKE
-    paint.strokeWidth = 2f * scale
+    paint.strokeWidth = 1f * scale
     paint.color = Color.parseColor("#6F7A99")
     canvas.drawRoundRect(body, 10f * scale, 10f * scale, paint)
     paint.style = Paint.Style.FILL
-    drawCenteredTitle(
+    drawLineText(
       canvas,
       sticker.title,
-      width / 2f,
-      pad + 14f * scale,
-      width - pad * 3,
-      (9f * scale).coerceAtLeast(10f),
+      pad,
+      pad - 2f * scale,
+      width - pad * 2,
+      (9f * scale).coerceAtLeast(8f),
       Color.parseColor("#F4E8C8"),
+      Layout.Alignment.ALIGN_CENTER,
     )
-    val window = RectF(pad + 8f * scale, height * 0.42f, width - pad - 8f * scale, height - pad - 10f * scale)
+    val windowH = 34f * scale
+    val window = RectF(
+      pad,
+      height - pad - windowH,
+      width - pad,
+      height - pad,
+    )
     paint.color = Color.parseColor("#0A1020")
     canvas.drawRoundRect(window, 6f * scale, 6f * scale, paint)
     val reelY = window.centerY()
@@ -240,25 +248,42 @@ class StickerBitmapOverlay(
     return "%d:%02d".format(total / 60, total % 60)
   }
 
+  private fun musicPulse(index: Int, seconds: Double): Float {
+    val low = 0.18f + ((index * 11) % 28) / 100f
+    val high = 0.55f + ((index * 7) % 45) / 100f
+    val down = (130.0 + ((index * 2) % 5) * 28) / 1000.0
+    val up = (160.0 + (index % 6) * 35) / 1000.0
+    val t = seconds % (down + up)
+    return if (t < down) {
+      lerp(high, low, easeInOutQuad(t / down).toFloat())
+    } else {
+      lerp(low, high, easeInOutQuad((t - down) / up).toFloat())
+    }
+  }
+
+  private fun lerp(from: Float, to: Float, amount: Float) = from + (to - from) * amount
+
+  private fun easeInOutQuad(x: Double): Double {
+    val t = x.coerceIn(0.0, 1.0)
+    return if (t < 0.5) 2.0 * t * t else 1.0 - (2.0 * t - 2.0).let { it * it } / 2.0
+  }
+
   private fun drawMusic(canvas: Canvas, width: Int, height: Int, scale: Float, seconds: Double) {
     val cx = width / 2f
     val cy = width / 2f
-    val inner = 26f * scale
-    val maxLen = 22f * scale
-    val spikes = 80
+    val inner = 28f * scale
+    val spikes = 72
     val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     paint.color = Color.parseColor("#F4F4F4")
-    paint.strokeWidth = 1.4f * scale
+    paint.strokeWidth = 1.5f * scale
     paint.strokeCap = Paint.Cap.ROUND
     paint.style = Paint.Style.STROKE
     for (index in 0 until spikes) {
-      val angle = index * (Math.PI * 2.0 / spikes)
-      val wave = (
-        0.38 * (0.5 + 0.5 * sin(seconds * 9.2 + index * 0.37)) +
-          0.36 * (0.5 + 0.5 * sin(seconds * 14.4 + index * 0.81)) +
-          0.26 * (0.5 + 0.5 * sin(seconds * 5.1 + index * 0.16))
-        )
-      val length = inner + maxLen * (0.12 + 0.88 * wave).toFloat()
+      val pulse = musicPulse((index * 3) % 18, seconds)
+      val minH = (3 + index % 4) * scale
+      val maxH = (16 + index % 13) * scale
+      val length = inner + minH + pulse * (maxH - minH)
+      val angle = index * (Math.PI * 2.0 / spikes) - Math.PI / 2.0
       canvas.drawLine(
         (cx + cos(angle) * inner).toFloat(),
         (cy + sin(angle) * inner).toFloat(),
@@ -292,10 +317,18 @@ class StickerBitmapOverlay(
       textSize = fontPx
       this.color = color
       typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
-      textAlign = if (align == Layout.Alignment.ALIGN_OPPOSITE) Paint.Align.RIGHT else Paint.Align.LEFT
+      textAlign = when (align) {
+        Layout.Alignment.ALIGN_OPPOSITE -> Paint.Align.RIGHT
+        Layout.Alignment.ALIGN_CENTER -> Paint.Align.CENTER
+        else -> Paint.Align.LEFT
+      }
     }
     val clipped = TextUtils.ellipsize(text, paint, maxWidth, TextUtils.TruncateAt.END).toString()
-    val drawX = if (align == Layout.Alignment.ALIGN_OPPOSITE) x + maxWidth else x
+    val drawX = when (align) {
+      Layout.Alignment.ALIGN_OPPOSITE -> x + maxWidth
+      Layout.Alignment.ALIGN_CENTER -> x + maxWidth / 2f
+      else -> x
+    }
     canvas.drawText(clipped, drawX, y + fontPx, paint)
   }
 

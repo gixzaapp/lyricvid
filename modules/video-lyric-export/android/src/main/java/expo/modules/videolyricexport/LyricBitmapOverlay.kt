@@ -2,10 +2,12 @@ package expo.modules.videolyricexport
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
 import android.graphics.RectF
@@ -68,6 +70,9 @@ class LyricBitmapOverlay(
     if (options.animation == "wheel") {
       return drawWheel(seconds)
     }
+    if (options.animation == "chat") {
+      return drawChat(seconds)
+    }
     if (isDepthAnimation(options.animation)) {
       return drawDepth(seconds)
     }
@@ -77,7 +82,7 @@ class LyricBitmapOverlay(
     val key =
       if (karaoke) "${cue.text}\u0000${cue.highlightStart}\u0000${cue.highlightEnd}" else cue.text
     val base = bitmaps.getOrPut(key) { drawLine(cue) }
-    return if (options.animation == "sparkle" || options.animation == "glow") {
+    return if (options.animation == "sparkle" || options.animation == "glow" || options.animation == "neon") {
       composeLive(base, seconds)
     } else {
       base
@@ -102,11 +107,12 @@ class LyricBitmapOverlay(
     val text = cue.text
     val textColor = parseCssColor(options.color, Color.WHITE)
     val spanned = styledLine(cue)
+    val neon = options.animation == "neon"
     val paint = TextPaint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply {
       textSize = fontPx
-      color = textColor
-      typeface = typefaceFor(text)
-      if (options.outline) {
+      color = if (neon) Color.WHITE else textColor
+      typeface = if (neon) neonTypeface(text) else typefaceFor(text)
+      if (options.outline && !neon) {
         setShadowLayer(4f * overlayScale, 0f, 1.5f * overlayScale, Color.BLACK)
       }
     }
@@ -142,7 +148,7 @@ class LyricBitmapOverlay(
     }
     canvas.save()
     canvas.translate(padX.toFloat(), padY.toFloat())
-    if (options.outline) {
+    if (options.outline && options.animation != "neon") {
       val outlinePaint = TextPaint(paint).apply {
         style = Paint.Style.STROKE
         strokeWidth = 3.2f * overlayScale
@@ -165,6 +171,10 @@ class LyricBitmapOverlay(
       return spanned
     }
     val textColor = parseCssColor(options.color, Color.WHITE)
+    if (options.animation == "neon") {
+      spanned.setSpan(ForegroundColorSpan(Color.WHITE), 0, spanned.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+      return spanned
+    }
     if (options.animation != "none") {
       spanned.setSpan(ForegroundColorSpan(textColor), 0, spanned.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
       return spanned
@@ -226,9 +236,10 @@ class LyricBitmapOverlay(
       "sparkle" -> MotionSpec(0.28, 0.2, 0.0, 0.0, 1f)
       "fly" -> MotionSpec(0.42, 0.26, 3.4, -7.2, 0.86f, -14f)
       "glow" -> MotionSpec(0.3, 0.2, 0.0, 0.0, 0.96f)
+      "neon" -> MotionSpec(0.28, 0.2, 0.0, 0.0, 0.98f)
       "bounce" -> MotionSpec(0.4, 0.18, 2.8, 0.0, 0.8f, 0f, true)
       "float" -> MotionSpec(0.3, 0.2, 1.1, 0.0, 0.97f)
-      "wheel", "flip", "coverflow", "prism" -> MotionSpec(0.0, 0.0, 0.0, 0.0, 1f)
+      "wheel", "flip", "coverflow", "prism", "chat" -> MotionSpec(0.0, 0.0, 0.0, 0.0, 1f)
       else -> MotionSpec(0.28, 0.2, 1.4, 0.0, 0.94f)
     }
     if ((options.animation == "slide" || options.animation == "fly") && options.align == "right") {
@@ -276,7 +287,7 @@ class LyricBitmapOverlay(
   }
 
   private fun composeLive(base: Bitmap, seconds: Double): Bitmap {
-    val pad = (18f * overlayScale).toInt().coerceAtLeast(12)
+    val pad = ((if (options.animation == "neon") 42f else 18f) * overlayScale).toInt().coerceAtLeast(12)
     val width = base.width + pad * 2
     val height = base.height + pad * 2
     val out = nextLive(width, height)
@@ -295,6 +306,29 @@ class LyricBitmapOverlay(
       canvas.concat(matrix)
       canvas.drawBitmap(base, pad.toFloat(), pad.toFloat(), glowPaint)
       canvas.restore()
+    }
+    if (options.animation == "neon") {
+      val swell = (0.55 + 0.45 * sin(seconds * 2.2 * rate)).toFloat()
+      val flicker = (0.9 + 0.1 * sin(seconds * 17 * rate)).toFloat()
+      val pulse = swell * flicker
+      val far = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        colorFilter = PorterDuffColorFilter(textColor, PorterDuff.Mode.SRC_ATOP)
+        maskFilter = BlurMaskFilter(24f * overlayScale, BlurMaskFilter.Blur.NORMAL)
+        alpha = (90 + 90 * pulse).toInt().coerceIn(0, 255)
+      }
+      val mid = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        colorFilter = PorterDuffColorFilter(textColor, PorterDuff.Mode.SRC_ATOP)
+        maskFilter = BlurMaskFilter(10f * overlayScale, BlurMaskFilter.Blur.NORMAL)
+        alpha = (150 + 80 * pulse).toInt().coerceIn(0, 255)
+      }
+      val tube = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        colorFilter = PorterDuffColorFilter(textColor, PorterDuff.Mode.SRC_ATOP)
+        maskFilter = BlurMaskFilter(3.5f * overlayScale, BlurMaskFilter.Blur.NORMAL)
+        alpha = (210 + 45 * pulse).toInt().coerceIn(0, 255)
+      }
+      canvas.drawBitmap(base, pad.toFloat(), pad.toFloat(), far)
+      canvas.drawBitmap(base, pad.toFloat(), pad.toFloat(), mid)
+      canvas.drawBitmap(base, pad.toFloat(), pad.toFloat(), tube)
     }
     canvas.drawBitmap(base, pad.toFloat(), pad.toFloat(), null)
     if (options.animation == "sparkle") {
@@ -423,6 +457,83 @@ class LyricBitmapOverlay(
       canvas.scale(scale, scale, (width / 2f) - 10f * overlayScale, layout.height / 2f)
       layout.draw(canvas)
       canvas.restore()
+    }
+    return out
+  }
+
+  private fun drawChat(seconds: Double): Bitmap {
+    val lines = wheelLines()
+    if (lines.isEmpty()) {
+      return emptyBitmap
+    }
+    val index = lines.indexOfLast { seconds >= it.start }
+    if (index < 0) {
+      return emptyBitmap
+    }
+    val first = max(0, index - 3)
+    val visible = lines.subList(first, index + 1)
+    val padX = 14f * overlayScale
+    val padY = 9f * overlayScale
+    val gap = 8f * overlayScale
+    val radius = 18f * overlayScale
+    val width = max(2, (videoWidth * 0.88f).toInt())
+    val maxBubble = (width * 0.78f).toInt().coerceAtLeast(48)
+    val inner = (maxBubble - padX * 2).toInt().coerceAtLeast(24)
+    val paint = TextPaint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply {
+      textSize = fontPx
+    }
+    data class Bubble(val text: String, val outgoing: Boolean, val current: Boolean, val layout: StaticLayout, val textW: Int)
+    val bubbles = visible.mapIndexed { offset, line ->
+      val lineIndex = first + offset
+      val outgoing = lineIndex % 2 == 1
+      paint.color = if (outgoing) parseCssColor(options.color, Color.WHITE) else Color.rgb(28, 28, 30)
+      paint.typeface = typefaceFor(line.text)
+      val layout = layoutFor(line.text, paint, inner, Layout.Alignment.ALIGN_NORMAL)
+      var used = 1
+      for (lineNo in 0 until layout.lineCount) {
+        used = max(used, ceil(layout.getLineWidth(lineNo)).toInt())
+      }
+      Bubble(line.text, outgoing, lineIndex == index, layout, used)
+    }
+    val heights = bubbles.map { it.layout.height + padY * 2 }
+    val height = max(2, (heights.sum() + gap * (bubbles.size - 1) + 8f * overlayScale).toInt())
+    val out = nextLive(width, height)
+    val canvas = Canvas(out)
+    canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
+    val fill = Paint(Paint.ANTI_ALIAS_FLAG)
+    var y = 4f * overlayScale
+    val current = visible.last()
+    val rate = options.animationSpeed.let { if (it <= 0) 1.0 else it.coerceIn(0.4, 2.5) }
+    val enter = ((seconds - current.start) / (0.22 / rate)).toFloat().coerceIn(0f, 1f)
+    val outgoingBg = options.backgroundColor
+      ?.let { parseCssColor(it, Color.TRANSPARENT) }
+      ?.takeIf { Color.alpha(it) > 0 }
+      ?: Color.rgb(10, 132, 255)
+    val incomingBg = Color.rgb(232, 232, 237)
+    bubbles.forEachIndexed { bubbleIndex, bubble ->
+      val bubbleH = heights[bubbleIndex]
+      val bubbleW = min(maxBubble.toFloat(), bubble.textW + padX * 2)
+      val left = if (bubble.outgoing) width - bubbleW - 4f * overlayScale else 4f * overlayScale
+      val alpha = if (bubble.current) enter else 1f
+      fill.color = if (bubble.outgoing) outgoingBg else incomingBg
+      fill.alpha = (alpha * 255).toInt()
+      val rect = RectF(left, y, left + bubbleW, y + bubbleH)
+      val radii = if (bubble.outgoing) {
+        floatArrayOf(radius, radius, radius, radius, 6f * overlayScale, 6f * overlayScale, radius, radius)
+      } else {
+        floatArrayOf(radius, radius, radius, radius, radius, radius, 6f * overlayScale, 6f * overlayScale)
+      }
+      val path = Path()
+      path.addRoundRect(rect, radii, Path.Direction.CW)
+      canvas.drawPath(path, fill)
+      paint.color = if (bubble.outgoing) parseCssColor(options.color, Color.WHITE) else Color.rgb(28, 28, 30)
+      paint.alpha = (alpha * 255).toInt()
+      paint.typeface = typefaceFor(bubble.text)
+      canvas.save()
+      canvas.translate(left + padX, y + padY)
+      bubble.layout.draw(canvas)
+      canvas.restore()
+      y += bubbleH + gap
     }
     return out
   }
@@ -576,6 +687,13 @@ class LyricBitmapOverlay(
     val overshoot = 1.70158f
     val inv = x - 1f
     return 1f + (overshoot + 1f) * inv * inv * inv + overshoot * inv * inv
+  }
+
+  private fun neonTypeface(text: String): Typeface {
+    if (needsSystemFont(text)) {
+      return typefaceFor(text)
+    }
+    return bundledTypeface("pacifico") ?: typefaceFor(text)
   }
 
   private fun typefaceFor(text: String): Typeface {

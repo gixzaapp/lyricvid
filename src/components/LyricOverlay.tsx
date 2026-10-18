@@ -23,9 +23,10 @@ import {
   floatOffset,
   glowPulse,
   motionFor,
+  neonPulse,
   sparkleTwinkle,
 } from '@/lib/lyricMotion';
-import { colors, lyricFontStyle } from '@/theme';
+import { colors, lyricFontStyle, neonSignFontStyle, usesSystemLyricFont } from '@/theme';
 import type { LyricWord, SubtitleStyle } from '@/types';
 
 type Props = {
@@ -305,22 +306,31 @@ export function LyricOverlay({
 
   const displayText = text || placeholder || '';
   const highlight = highlightRangeInText(text, words, currentIndex);
+  const platform = Platform.OS === 'ios' ? 'ios' : 'android';
+  const isNeon = motion.loop === 'neon';
   const wordStyle = {
-    color: styleConfig.color,
+    color: isNeon ? '#FFFFFF' : styleConfig.color,
     fontSize: styleConfig.fontSize,
-    ...lyricFontStyle(styleConfig.fontFamily, displayText, Platform.OS === 'ios' ? 'ios' : 'android', {
-      bold: styleConfig.bold,
-      italic: styleConfig.italic,
-    }),
-    textShadowColor: styleConfig.outline ? 'rgba(0,0,0,0.85)' : 'transparent',
-    textShadowOffset: styleConfig.outline ? { width: 0, height: 1 } : { width: 0, height: 0 },
-    textShadowRadius: styleConfig.outline ? 4 : 0,
+    ...(isNeon && !usesSystemLyricFont(displayText)
+      ? neonSignFontStyle(displayText, platform)
+      : lyricFontStyle(styleConfig.fontFamily, displayText, platform, {
+          bold: styleConfig.bold,
+          italic: styleConfig.italic,
+        })),
+    textShadowColor: isNeon
+      ? styleConfig.color
+      : styleConfig.outline
+        ? 'rgba(0,0,0,0.85)'
+        : 'transparent',
+    textShadowOffset: isNeon || !styleConfig.outline ? { width: 0, height: 0 } : { width: 0, height: 1 },
+    textShadowRadius: isNeon ? 5 : styleConfig.outline ? 4 : 0,
   } as const;
 
   const alignItems =
     styleConfig.align === 'left' ? 'flex-start' : styleConfig.align === 'right' ? 'flex-end' : 'center';
   const holdTime = Math.max(0, currentTime - lineStart);
   const glow = motion.loop === 'glow' ? glowPulse(holdTime, speed) : 0;
+  const neon = motion.loop === 'neon' ? neonPulse(holdTime, speed) : 0;
 
   return (
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill} onLayout={onStageLayout}>
@@ -350,6 +360,7 @@ export function LyricOverlay({
         style={[
           styles.lyricBox,
           motion.sparkle ? styles.sparklePad : null,
+          motion.loop === 'neon' ? styles.neonPad : null,
           {
             backgroundColor: styleConfig.backgroundColor ?? 'transparent',
             alignItems,
@@ -409,8 +420,79 @@ export function LyricOverlay({
             {text}
           </Text>
         ) : null}
+        {text && isNeon ? (
+          <>
+            <Text
+              pointerEvents="none"
+              style={[
+                wordStyle,
+                styles.line,
+                styles.neonGlow,
+                {
+                  textAlign: styleConfig.align,
+                  color: styleConfig.color,
+                  opacity: 0.28 + neon * 0.32,
+                  textShadowColor: styleConfig.color,
+                  textShadowOffset: { width: 0, height: 0 },
+                  textShadowRadius: 38 + neon * 18,
+                },
+              ]}>
+              {text}
+            </Text>
+            <Text
+              pointerEvents="none"
+              style={[
+                wordStyle,
+                styles.line,
+                styles.neonGlow,
+                {
+                  textAlign: styleConfig.align,
+                  color: styleConfig.color,
+                  opacity: 0.5 + neon * 0.35,
+                  textShadowColor: styleConfig.color,
+                  textShadowOffset: { width: 0, height: 0 },
+                  textShadowRadius: 16 + neon * 10,
+                },
+              ]}>
+              {text}
+            </Text>
+            <Text
+              pointerEvents="none"
+              style={[
+                wordStyle,
+                styles.line,
+                styles.neonGlow,
+                {
+                  textAlign: styleConfig.align,
+                  color: '#FFFFFF',
+                  opacity: 0.88 + neon * 0.12,
+                  textShadowColor: styleConfig.color,
+                  textShadowOffset: { width: 0, height: 0 },
+                  textShadowRadius: 7 + neon * 4,
+                },
+              ]}>
+              {text}
+            </Text>
+          </>
+        ) : null}
         {text ? (
-          <Text style={[wordStyle, styles.line, { textAlign: styleConfig.align }]}>
+          <Text
+            style={[
+              wordStyle,
+              styles.line,
+              {
+                textAlign: styleConfig.align,
+                ...(isNeon
+                  ? {
+                      color: '#FFFFFF',
+                      opacity: 0.96,
+                      textShadowColor: styleConfig.color,
+                      textShadowOffset: { width: 0, height: 0 },
+                      textShadowRadius: 3 + neon * 2,
+                    }
+                  : null),
+              },
+            ]}>
             {wholeLine || highlight.end <= highlight.start ? (
               text
             ) : (
@@ -449,11 +531,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 14,
   },
+  neonPad: {
+    paddingHorizontal: 32,
+    paddingVertical: 26,
+  },
   glow: {
     position: 'absolute',
     left: 10,
     right: 10,
     top: 6,
+  },
+  neonGlow: {
+    position: 'absolute',
+    left: 32,
+    right: 32,
+    top: 26,
   },
   sparkle: {
     position: 'absolute',

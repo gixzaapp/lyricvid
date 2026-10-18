@@ -92,20 +92,18 @@ export function SongSearchModal({ visible, currentTime, onClose }: Props) {
     setResults([]);
     let showResult = () => {};
     try {
-      const { match, tracks } = await detectSongFromMedia({
+      const { tracks } = await detectSongFromMedia({
         sourceUri,
         currentTime,
         mediaDuration: sourceDuration,
       });
       showResult = () => {
-        setTrackName(match.title);
-        setArtistName(match.artist);
         if (tracks.length === 0) {
-          setError(t('search.detectNoLyrics', { artist: match.artist, title: match.title }));
+          setError('search.detectNoLyrics');
           return;
         }
         setResults(tracks);
-        setNotice(t('search.detected', { artist: match.artist, title: match.title }));
+        setNotice('search.detected');
       };
     } catch (err) {
       const message = errorText(err, 'search.detectFailed');

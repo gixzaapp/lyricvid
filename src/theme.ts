@@ -101,6 +101,10 @@ export function isCustomLyricFont(id?: string) {
   return CUSTOM_FONT_IDS.includes(fontFamilyFor(id).id);
 }
 
+export function neonSignFontStyle(text: string, platform: 'ios' | 'android') {
+  return lyricFontStyle('pacifico', text, platform);
+}
+
 export function lyricFontStyle(
   fontId: string | undefined,
   text: string,

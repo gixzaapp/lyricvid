@@ -26,12 +26,14 @@ const ANIM_KEYS: Record<LyricAnimationId, TranslationKey> = {
   sparkle: 'style.animSparkle',
   fly: 'style.animFly',
   glow: 'style.animGlow',
+  neon: 'style.animNeon',
   bounce: 'style.animBounce',
   float: 'style.animFloat',
   wheel: 'style.animWheel',
   flip: 'style.animFlip',
   coverflow: 'style.animCoverFlow',
   prism: 'style.animPrism',
+  chat: 'style.animChat',
 };
 
 const BG_KEYS: Record<string, TranslationKey> = {
