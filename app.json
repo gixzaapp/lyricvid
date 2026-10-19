@@ -10,9 +10,6 @@
     "ios": {
       "icon": "./assets/images/icon.png",
       "bundleIdentifier": "com.gixza.lyricvid",
-      "entitlements": {
-        "com.apple.developer.shazamkit": true
-      },
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "AI LyricVid needs access to your videos so you can overlay lyrics.",
         "NSPhotoLibraryAddUsageDescription": "AI LyricVid saves the finished lyric video to your library.",

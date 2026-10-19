@@ -1,4 +1,4 @@
-const { withAppBuildGradle, withEntitlementsPlist } = require('@expo/config-plugins');
+const { withAppBuildGradle } = require('@expo/config-plugins');
 
 const AAR_LINE =
   "implementation files('../../modules/video-lyric-export/android/libs/shazamkit-android-release.aar')";
@@ -23,13 +23,6 @@ function withShazamAndroid(config) {
   });
 }
 
-function withShazamIos(config) {
-  return withEntitlementsPlist(config, (mod) => {
-    mod.modResults['com.apple.developer.shazamkit'] = true;
-    return mod;
-  });
-}
-
 module.exports = function withShazamKit(config) {
-  return withShazamAndroid(withShazamIos(config));
+  return withShazamAndroid(config);
 };
