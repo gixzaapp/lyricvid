@@ -749,32 +749,32 @@ public class VideoLyricExportModule: Module {
   private func addStickerLayers(_ stickers: [ExportSticker], parent: CALayer, size: CGSize, scale: CGFloat, duration: Double) {
     for sticker in stickers {
       let center = CGPoint(x: size.width * sticker.x / 100, y: size.height * (1 - sticker.y / 100))
-      let box = max(90, 120 * scale * CGFloat(sticker.scale))
+      let factor = max(0.5, scale * CGFloat(sticker.scale))
       let root = CALayer()
-      if sticker.kind == "beats" {
-        let wide = box * 1.7
-        let tall = box * 0.72
+      switch sticker.kind {
+      case "beats":
+        let wide = 168 * factor
+        let tall = 86 * factor
         root.frame = CGRect(x: center.x - wide / 2, y: center.y - tall / 2, width: wide, height: tall)
         addBeatsLayer(to: root, title: sticker.title, videoDuration: duration)
-      } else if sticker.kind == "player" {
-        let wide = box * 2.2
-        let tall = box * 0.7
+      case "player":
+        let wide = 228 * factor
+        let tall = 72 * factor
         root.frame = CGRect(x: center.x - wide / 2, y: center.y - tall / 2, width: wide, height: tall)
         addPlayerLayer(to: root, sticker: sticker, duration: duration)
-      } else if sticker.kind == "cassette" {
-        let factor = scale * CGFloat(sticker.scale)
+      case "cassette":
         let wide = 128 * factor
         let tall = 68 * factor
         root.frame = CGRect(x: center.x - wide / 2, y: center.y - tall / 2, width: wide, height: tall)
         addCassetteLayer(to: root, title: sticker.title, videoDuration: duration)
-      } else {
+      case "music":
+        let box = max(90, 120 * factor)
         root.frame = CGRect(x: center.x - box / 2, y: center.y - box / 2, width: box, height: box)
-        switch sticker.kind {
-        case "music":
-          addMusicLayer(to: root, title: sticker.title, box: box, videoDuration: duration)
-        default:
-          addVinylLayer(to: root, title: sticker.title, box: box, videoDuration: duration)
-        }
+        addMusicLayer(to: root, title: sticker.title, box: box, videoDuration: duration)
+      default:
+        let box = 112 * factor
+        root.frame = CGRect(x: center.x - box / 2, y: center.y - box / 2, width: box, height: box)
+        addVinylLayer(to: root, title: sticker.title, box: box, videoDuration: duration)
       }
       parent.addSublayer(root)
     }
@@ -789,25 +789,95 @@ public class VideoLyricExportModule: Module {
     animation.fillMode = .forwards
   }
 
+  private func fromTop(_ top: CGFloat, height: CGFloat, in container: CGRect) -> CGFloat {
+    container.height - top - height
+  }
+
+  private func ovalLayer(in bounds: CGRect, fill: UIColor, stroke: UIColor? = nil, lineWidth: CGFloat = 0) -> CAShapeLayer {
+    let layer = CAShapeLayer()
+    layer.frame = bounds
+    layer.path = UIBezierPath(ovalIn: CGRect(origin: .zero, size: bounds.size)).cgPath
+    layer.fillColor = fill.cgColor
+    if let stroke, lineWidth > 0 {
+      layer.strokeColor = stroke.cgColor
+      layer.lineWidth = lineWidth
+    }
+    layer.allowsEdgeAntialiasing = true
+    return layer
+  }
+
+  private func stickerText(
+    _ string: String,
+    fontSize: CGFloat,
+    color: UIColor,
+    alignment: CATextLayerAlignmentMode = .center,
+    wrap: Bool = false
+  ) -> CATextLayer {
+    let layer = CATextLayer()
+    layer.contentsScale = 3
+    layer.alignmentMode = alignment
+    layer.isWrapped = wrap
+    layer.truncationMode = wrap ? .none : .end
+    layer.string = string
+    layer.font = UIFont.systemFont(ofSize: fontSize, weight: .heavy)
+    layer.fontSize = fontSize
+    layer.foregroundColor = color.cgColor
+    return layer
+  }
+
   private func addVinylLayer(to root: CALayer, title: String, box: CGFloat, videoDuration: Double) {
+    let s = box / 112
+    let discSize = box
     let disc = CALayer()
-    disc.frame = CGRect(x: box * 0.08, y: 0, width: box * 0.84, height: box * 0.84)
-    disc.cornerRadius = disc.bounds.width / 2
-    disc.backgroundColor = UIColor(white: 0.07, alpha: 1).cgColor
-    disc.borderWidth = 4
-    disc.borderColor = UIColor(white: 0.17, alpha: 1).cgColor
-    let label = CATextLayer()
-    label.contentsScale = 2
-    label.alignmentMode = .center
-    label.isWrapped = true
-    label.string = title
-    label.fontSize = max(8, box * 0.07)
-    label.foregroundColor = UIColor(red: 1, green: 0.96, blue: 0.91, alpha: 1).cgColor
-    label.backgroundColor = UIColor(red: 0.77, green: 0.29, blue: 0.29, alpha: 1).cgColor
-    label.cornerRadius = box * 0.16
-    label.masksToBounds = true
-    label.frame = CGRect(x: box * 0.26, y: box * 0.26, width: box * 0.32, height: box * 0.32)
-    disc.addSublayer(label)
+    disc.bounds = CGRect(x: 0, y: 0, width: discSize, height: discSize)
+    disc.position = CGPoint(x: root.bounds.midX, y: root.bounds.midY)
+    disc.allowsEdgeAntialiasing = true
+    let plate = ovalLayer(
+      in: disc.bounds,
+      fill: UIColor(red: 0.07, green: 0.07, blue: 0.07, alpha: 1),
+      stroke: UIColor(red: 0.17, green: 0.17, blue: 0.17, alpha: 1),
+      lineWidth: 5 * s
+    )
+    disc.addSublayer(plate)
+    for inset in [12 * s, 22 * s] {
+      let groove = ovalLayer(
+        in: disc.bounds.insetBy(dx: inset, dy: inset),
+        fill: .clear,
+        stroke: UIColor(white: 1, alpha: 0.10),
+        lineWidth: max(1, s)
+      )
+      disc.addSublayer(groove)
+    }
+    let badgeSize = 46 * s
+    let badge = ovalLayer(
+      in: CGRect(
+        x: (discSize - badgeSize) / 2,
+        y: (discSize - badgeSize) / 2,
+        width: badgeSize,
+        height: badgeSize
+      ),
+      fill: UIColor(red: 0.77, green: 0.29, blue: 0.29, alpha: 1)
+    )
+    let badgeMask = CAShapeLayer()
+    badgeMask.frame = badge.bounds
+    badgeMask.path = UIBezierPath(ovalIn: CGRect(origin: .zero, size: badge.bounds.size)).cgPath
+    badge.mask = badgeMask
+    let titleLayer = stickerText(title, fontSize: max(7 * s, 8), color: UIColor(red: 1, green: 0.96, blue: 0.91, alpha: 1), wrap: true)
+    let titleInset = 5 * s
+    titleLayer.frame = badge.bounds.insetBy(dx: titleInset, dy: titleInset + 4 * s)
+    badge.addSublayer(titleLayer)
+    let spindleSize = 8 * s
+    let spindle = ovalLayer(
+      in: CGRect(
+        x: (badgeSize - spindleSize) / 2,
+        y: (badgeSize - spindleSize) / 2,
+        width: spindleSize,
+        height: spindleSize
+      ),
+      fill: UIColor(red: 0.04, green: 0.04, blue: 0.07, alpha: 1)
+    )
+    badge.addSublayer(spindle)
+    disc.addSublayer(badge)
     let spin = CABasicAnimation(keyPath: "transform.rotation.z")
     spin.fromValue = 0
     spin.toValue = Double.pi * 2
@@ -825,31 +895,51 @@ public class VideoLyricExportModule: Module {
     body.backgroundColor = UIColor(red: 0.11, green: 0.14, blue: 0.22, alpha: 1).cgColor
     body.borderWidth = 1 * s
     body.borderColor = UIColor(red: 0.44, green: 0.48, blue: 0.6, alpha: 1).cgColor
-    let titleLayer = CATextLayer()
-    titleLayer.contentsScale = 2
-    titleLayer.alignmentMode = .center
-    titleLayer.truncationMode = .end
-    titleLayer.string = title
-    titleLayer.fontSize = 9 * s
-    titleLayer.foregroundColor = UIColor(red: 0.96, green: 0.91, blue: 0.78, alpha: 1).cgColor
-    titleLayer.frame = CGRect(x: 8 * s, y: 8 * s, width: body.bounds.width - 16 * s, height: 12 * s)
-    body.addSublayer(titleLayer)
-    let windowH = 34 * s
     let pad = 8 * s
+    let titleH = 12 * s
+    let windowH = 34 * s
+    let titleLayer = stickerText(
+      title,
+      fontSize: 9 * s,
+      color: UIColor(red: 0.96, green: 0.91, blue: 0.78, alpha: 1)
+    )
+    titleLayer.frame = CGRect(
+      x: pad,
+      y: fromTop(pad, height: titleH, in: body.bounds),
+      width: body.bounds.width - pad * 2,
+      height: titleH
+    )
+    body.addSublayer(titleLayer)
     let window = CALayer()
-    window.frame = CGRect(x: pad, y: body.bounds.height - pad - windowH, width: body.bounds.width - pad * 2, height: windowH)
+    window.frame = CGRect(x: pad, y: pad, width: body.bounds.width - pad * 2, height: windowH)
     window.cornerRadius = 6 * s
     window.backgroundColor = UIColor(red: 0.04, green: 0.06, blue: 0.13, alpha: 1).cgColor
+    window.masksToBounds = true
     body.addSublayer(window)
     let reelSize: CGFloat = 22 * s
+    let spokeColor = UIColor(red: 0.91, green: 0.82, blue: 0.63, alpha: 1)
     for x in [window.bounds.width * 0.22, window.bounds.width * 0.78] {
       let reel = CALayer()
       reel.bounds = CGRect(x: 0, y: 0, width: reelSize, height: reelSize)
-      reel.position = CGPoint(x: x, y: window.bounds.height / 2)
-      reel.cornerRadius = reelSize / 2
-      reel.backgroundColor = UIColor(red: 0.23, green: 0.16, blue: 0.09, alpha: 1).cgColor
-      reel.borderWidth = 2 * s
-      reel.borderColor = UIColor(red: 0.79, green: 0.64, blue: 0.42, alpha: 1).cgColor
+      reel.position = CGPoint(x: x, y: window.bounds.midY)
+      reel.allowsEdgeAntialiasing = true
+      let plate = ovalLayer(
+        in: reel.bounds,
+        fill: UIColor(red: 0.23, green: 0.16, blue: 0.09, alpha: 1),
+        stroke: UIColor(red: 0.79, green: 0.64, blue: 0.42, alpha: 1),
+        lineWidth: 2 * s
+      )
+      reel.addSublayer(plate)
+      let spokeH = CALayer()
+      spokeH.bounds = CGRect(x: 0, y: 0, width: reelSize * 0.55, height: max(2 * s, 1.5))
+      spokeH.position = CGPoint(x: reel.bounds.midX, y: reel.bounds.midY)
+      spokeH.backgroundColor = spokeColor.cgColor
+      let spokeV = CALayer()
+      spokeV.bounds = CGRect(x: 0, y: 0, width: max(2 * s, 1.5), height: reelSize * 0.55)
+      spokeV.position = spokeH.position
+      spokeV.backgroundColor = spokeColor.cgColor
+      reel.addSublayer(spokeH)
+      reel.addSublayer(spokeV)
       let spin = CABasicAnimation(keyPath: "transform.rotation.z")
       spin.fromValue = 0
       spin.toValue = Double.pi * 2
@@ -872,56 +962,67 @@ public class VideoLyricExportModule: Module {
   }
 
   private func addPlayerLayer(to root: CALayer, sticker: ExportSticker, duration: Double) {
+    let s = max(root.bounds.width / 228, 0.5)
     let glass = CALayer()
     glass.frame = root.bounds
-    glass.cornerRadius = 22
-    glass.backgroundColor = UIColor(white: 1, alpha: 0.72).cgColor
-    glass.borderWidth = 1
-    glass.borderColor = UIColor(white: 1, alpha: 0.8).cgColor
+    glass.cornerRadius = 22 * s
+    glass.backgroundColor = UIColor(white: 1, alpha: 0.92).cgColor
+    glass.borderWidth = 1 * s
+    glass.borderColor = UIColor(white: 0.15, alpha: 0.22).cgColor
     glass.masksToBounds = true
+    let padX = 12 * s
+    let padY = 10 * s
+    let artSize = 40 * s
     let art = CALayer()
-    art.frame = CGRect(x: 12, y: (root.bounds.height - 40) / 2, width: 40, height: 40)
-    art.cornerRadius = 10
+    art.frame = CGRect(x: padX, y: (root.bounds.height - artSize) / 2, width: artSize, height: artSize)
+    art.cornerRadius = 10 * s
     art.backgroundColor = UIColor(red: 0.78, green: 0.71, blue: 0.60, alpha: 1).cgColor
-    let note = CATextLayer()
-    note.contentsScale = 2
-    note.alignmentMode = .center
-    note.string = "♪"
-    note.fontSize = 16
-    note.foregroundColor = UIColor(red: 0.23, green: 0.16, blue: 0.11, alpha: 1).cgColor
+    let note = stickerText("♪", fontSize: 16 * s, color: UIColor(red: 0.23, green: 0.16, blue: 0.11, alpha: 1))
     note.frame = art.bounds
     art.addSublayer(note)
     glass.addSublayer(art)
-    let textLeft: CGFloat = 62
-    let textWidth = max(8, root.bounds.width - textLeft - 12)
-    let titleLayer = CATextLayer()
-    titleLayer.contentsScale = 2
-    titleLayer.alignmentMode = .left
-    titleLayer.truncationMode = .end
-    titleLayer.string = sticker.title
-    titleLayer.fontSize = 12
-    titleLayer.foregroundColor = UIColor(white: 0.1, alpha: 1).cgColor
-    titleLayer.frame = CGRect(x: textLeft, y: 12, width: textWidth, height: 16)
+    let textLeft = padX + artSize + 10 * s
+    let textWidth = max(8, root.bounds.width - textLeft - padX)
+    let titleH = 16 * s
+    let artistH = 13 * s
+    let titleLayer = stickerText(
+      sticker.title,
+      fontSize: 12 * s,
+      color: UIColor(white: 0.08, alpha: 1),
+      alignment: .left
+    )
+    titleLayer.frame = CGRect(x: textLeft, y: fromTop(padY, height: titleH, in: root.bounds), width: textWidth, height: titleH)
     glass.addSublayer(titleLayer)
-    let artistLayer = CATextLayer()
-    artistLayer.contentsScale = 2
-    artistLayer.alignmentMode = .left
-    artistLayer.truncationMode = .end
-    artistLayer.string = sticker.artist.isEmpty ? "Artist" : sticker.artist
-    artistLayer.fontSize = 10
-    artistLayer.foregroundColor = UIColor(white: 0.42, alpha: 1).cgColor
-    artistLayer.frame = CGRect(x: textLeft, y: 28, width: textWidth, height: 13)
+    let artistLayer = stickerText(
+      sticker.artist.isEmpty ? "Artist" : sticker.artist,
+      fontSize: 10 * s,
+      color: UIColor(white: 0.38, alpha: 1),
+      alignment: .left
+    )
+    artistLayer.font = UIFont.systemFont(ofSize: 10 * s, weight: .semibold)
+    artistLayer.frame = CGRect(x: textLeft, y: fromTop(padY + titleH, height: artistH, in: root.bounds), width: textWidth, height: artistH)
     glass.addSublayer(artistLayer)
+    let timeH = 12 * s
+    let trackH = 3 * s
+    let times = stickerText("0:00", fontSize: 9 * s, color: UIColor(white: 0.42, alpha: 1), alignment: .left)
+    times.font = UIFont.monospacedDigitSystemFont(ofSize: 9 * s, weight: .semibold)
+    times.frame = CGRect(x: textLeft, y: padY, width: textWidth * 0.45, height: timeH)
+    glass.addSublayer(times)
+    let remain = max(duration > 0 ? duration : sticker.duration, 0)
+    let endTime = stickerText("-\(clock(remain))", fontSize: 9 * s, color: UIColor(white: 0.42, alpha: 1), alignment: .right)
+    endTime.font = UIFont.monospacedDigitSystemFont(ofSize: 9 * s, weight: .semibold)
+    endTime.frame = CGRect(x: textLeft + textWidth * 0.55, y: padY, width: textWidth * 0.45, height: timeH)
+    glass.addSublayer(endTime)
     let track = CALayer()
-    track.frame = CGRect(x: textLeft, y: root.bounds.height - 26, width: textWidth, height: 3)
-    track.cornerRadius = 1.5
+    track.frame = CGRect(x: textLeft, y: padY + timeH + 2 * s, width: textWidth, height: trackH)
+    track.cornerRadius = trackH / 2
     track.backgroundColor = UIColor(white: 0.32, alpha: 0.22).cgColor
     glass.addSublayer(track)
     let fill = CALayer()
     fill.anchorPoint = CGPoint(x: 0, y: 0.5)
-    fill.bounds = CGRect(x: 0, y: 0, width: textWidth, height: 3)
+    fill.bounds = CGRect(x: 0, y: 0, width: textWidth, height: trackH)
     fill.position = CGPoint(x: track.frame.minX, y: track.frame.midY)
-    fill.cornerRadius = 1.5
+    fill.cornerRadius = trackH / 2
     fill.backgroundColor = UIColor(white: 0.17, alpha: 1).cgColor
     let grow = CABasicAnimation(keyPath: "transform.scale.x")
     grow.fromValue = 0.02
@@ -932,43 +1033,30 @@ public class VideoLyricExportModule: Module {
     grow.isRemovedOnCompletion = false
     fill.add(grow, forKey: "progress")
     glass.addSublayer(fill)
-    let startTime = CATextLayer()
-    startTime.contentsScale = 2
-    startTime.alignmentMode = .left
-    startTime.string = "0:00"
-    startTime.fontSize = 9
-    startTime.foregroundColor = UIColor(white: 0.48, alpha: 1).cgColor
-    startTime.frame = CGRect(x: textLeft, y: root.bounds.height - 18, width: 40, height: 12)
-    glass.addSublayer(startTime)
-    let remain = max(duration > 0 ? duration : sticker.duration, 0)
-    let endTime = CATextLayer()
-    endTime.contentsScale = 2
-    endTime.alignmentMode = .right
-    endTime.string = "-\(clock(remain))"
-    endTime.fontSize = 9
-    endTime.foregroundColor = UIColor(white: 0.48, alpha: 1).cgColor
-    endTime.frame = CGRect(x: root.bounds.width - 52, y: root.bounds.height - 18, width: 40, height: 12)
-    glass.addSublayer(endTime)
     root.addSublayer(glass)
   }
 
   private func addBeatsLayer(to root: CALayer, title: String, videoDuration: Double) {
+    let s = max(root.bounds.width / 168, 0.5)
+    let titleH = 16 * s
+    let titleLayer = stickerText(title, fontSize: max(11 * s, 10), color: .white)
+    titleLayer.frame = CGRect(x: 4 * s, y: 0, width: root.bounds.width - 8 * s, height: titleH)
     let body = CALayer()
-    body.frame = CGRect(x: 0, y: 0, width: root.bounds.width, height: root.bounds.height * 0.72)
-    body.cornerRadius = 16
+    body.frame = CGRect(x: 0, y: titleH + 4 * s, width: root.bounds.width, height: max(8, root.bounds.height - titleH - 4 * s))
+    body.cornerRadius = 16 * s
     body.backgroundColor = UIColor(white: 0.02, alpha: 1).cgColor
     body.masksToBounds = true
     let bars = 32
-    let pad: CGFloat = 8
-    let gap: CGFloat = 1.6
+    let pad: CGFloat = 8 * s
+    let gap: CGFloat = 1.6 * s
     let usable = max(1, body.bounds.width - pad * 2)
-    let barW = max(2, (usable - gap * CGFloat(bars - 1)) / CGFloat(bars))
-    let maxH = max(8, body.bounds.height - 14)
+    let barW = max(2 * s, (usable - gap * CGFloat(bars - 1)) / CGFloat(bars))
+    let maxH = max(8 * s, body.bounds.height - 14 * s)
     for index in 0..<bars {
       let bar = CALayer()
-      bar.anchorPoint = CGPoint(x: 0.5, y: 1)
+      bar.anchorPoint = CGPoint(x: 0.5, y: 0)
       bar.bounds = CGRect(x: 0, y: 0, width: barW, height: maxH)
-      bar.position = CGPoint(x: pad + CGFloat(index) * (barW + gap) + barW / 2, y: body.bounds.height - 7)
+      bar.position = CGPoint(x: pad + CGFloat(index) * (barW + gap) + barW / 2, y: 7 * s)
       bar.cornerRadius = barW / 2
       bar.backgroundColor = UIColor(hue: CGFloat(index) / CGFloat(max(1, bars - 1)) * 0.78, saturation: 1, brightness: 1, alpha: 1).cgColor
       let pulse = CAKeyframeAnimation(keyPath: "transform.scale.y")
@@ -983,13 +1071,6 @@ public class VideoLyricExportModule: Module {
       body.addSublayer(bar)
     }
     root.addSublayer(body)
-    let titleLayer = CATextLayer()
-    titleLayer.contentsScale = 2
-    titleLayer.alignmentMode = .center
-    titleLayer.string = title
-    titleLayer.fontSize = max(9, root.bounds.width * 0.055)
-    titleLayer.foregroundColor = UIColor.white.cgColor
-    titleLayer.frame = CGRect(x: 4, y: body.frame.maxY + 2, width: root.bounds.width - 8, height: 16)
     root.addSublayer(titleLayer)
   }
 
