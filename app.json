@@ -15,7 +15,18 @@
       },
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "AI LyricVid needs access to your videos so you can overlay lyrics.",
-        "NSPhotoLibraryAddUsageDescription": "AI LyricVid saves the finished lyric video to your library."
+        "NSPhotoLibraryAddUsageDescription": "AI LyricVid saves the finished lyric video to your library.",
+        "UIApplicationSceneManifest": {
+          "UIApplicationSupportsMultipleScenes": false,
+          "UISceneConfigurations": {
+            "UIWindowSceneSessionRoleApplication": [
+              {
+                "UISceneConfigurationName": "Default Configuration",
+                "UISceneDelegateClassName": "$(PRODUCT_MODULE_NAME).SceneDelegate"
+              }
+            ]
+          }
+        }
       },
       "supportsTablet": true
     },
@@ -44,6 +55,8 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
+      "./plugins/withIosSceneLifecycle",
+      "./plugins/withIosPodDeploymentTarget",
       "./plugins/withShazamKit",
       "expo-router",
       [
