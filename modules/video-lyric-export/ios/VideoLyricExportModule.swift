@@ -755,7 +755,7 @@ public class VideoLyricExportModule: Module {
         let wide = box * 1.7
         let tall = box * 0.72
         root.frame = CGRect(x: center.x - wide / 2, y: center.y - tall / 2, width: wide, height: tall)
-        addBeatsLayer(to: root, title: sticker.title)
+        addBeatsLayer(to: root, title: sticker.title, videoDuration: duration)
       } else if sticker.kind == "player" {
         let wide = box * 2.2
         let tall = box * 0.7
@@ -766,21 +766,30 @@ public class VideoLyricExportModule: Module {
         let wide = 128 * factor
         let tall = 68 * factor
         root.frame = CGRect(x: center.x - wide / 2, y: center.y - tall / 2, width: wide, height: tall)
-        addCassetteLayer(to: root, title: sticker.title)
+        addCassetteLayer(to: root, title: sticker.title, videoDuration: duration)
       } else {
         root.frame = CGRect(x: center.x - box / 2, y: center.y - box / 2, width: box, height: box)
         switch sticker.kind {
         case "music":
-          addMusicLayer(to: root, title: sticker.title, box: box)
+          addMusicLayer(to: root, title: sticker.title, box: box, videoDuration: duration)
         default:
-          addVinylLayer(to: root, title: sticker.title, box: box)
+          addVinylLayer(to: root, title: sticker.title, box: box, videoDuration: duration)
         }
       }
       parent.addSublayer(root)
     }
   }
 
-  private func addVinylLayer(to root: CALayer, title: String, box: CGFloat) {
+  private func loopForExport(_ animation: CAAnimation, cycle: Double, videoDuration: Double) {
+    let cycleTime = max(cycle, 0.05)
+    animation.beginTime = AVCoreAnimationBeginTimeAtZero
+    animation.duration = cycleTime
+    animation.repeatCount = Float(ceil(max(videoDuration, cycleTime) / cycleTime) + 1)
+    animation.isRemovedOnCompletion = false
+    animation.fillMode = .forwards
+  }
+
+  private func addVinylLayer(to root: CALayer, title: String, box: CGFloat, videoDuration: Double) {
     let disc = CALayer()
     disc.frame = CGRect(x: box * 0.08, y: 0, width: box * 0.84, height: box * 0.84)
     disc.cornerRadius = disc.bounds.width / 2
@@ -802,13 +811,13 @@ public class VideoLyricExportModule: Module {
     let spin = CABasicAnimation(keyPath: "transform.rotation.z")
     spin.fromValue = 0
     spin.toValue = Double.pi * 2
-    spin.duration = 4.8
-    spin.repeatCount = .infinity
+    spin.timingFunction = CAMediaTimingFunction(name: .linear)
+    loopForExport(spin, cycle: 4.8, videoDuration: videoDuration)
     disc.add(spin, forKey: "spin")
     root.addSublayer(disc)
   }
 
-  private func addCassetteLayer(to root: CALayer, title: String) {
+  private func addCassetteLayer(to root: CALayer, title: String, videoDuration: Double) {
     let s = max(root.bounds.width / 128, 0.5)
     let body = CALayer()
     body.frame = root.bounds
@@ -844,8 +853,8 @@ public class VideoLyricExportModule: Module {
       let spin = CABasicAnimation(keyPath: "transform.rotation.z")
       spin.fromValue = 0
       spin.toValue = Double.pi * 2
-      spin.duration = 2.2
-      spin.repeatCount = .infinity
+      spin.timingFunction = CAMediaTimingFunction(name: .linear)
+      loopForExport(spin, cycle: 2.2, videoDuration: videoDuration)
       reel.add(spin, forKey: "spin")
       window.addSublayer(reel)
     }
@@ -943,7 +952,7 @@ public class VideoLyricExportModule: Module {
     root.addSublayer(glass)
   }
 
-  private func addBeatsLayer(to root: CALayer, title: String) {
+  private func addBeatsLayer(to root: CALayer, title: String, videoDuration: Double) {
     let body = CALayer()
     body.frame = CGRect(x: 0, y: 0, width: root.bounds.width, height: root.bounds.height * 0.72)
     body.cornerRadius = 16
@@ -968,9 +977,8 @@ public class VideoLyricExportModule: Module {
         base[(index * 3 + step * 5) % base.count]
       }
       pulse.keyTimes = [0, 0.14, 0.28, 0.42, 0.56, 0.7, 0.85, 1]
-      pulse.duration = 1.05 + Double(index % 6) * 0.11
-      pulse.repeatCount = .infinity
       pulse.calculationMode = .linear
+      loopForExport(pulse, cycle: 1.05 + Double(index % 6) * 0.11, videoDuration: videoDuration)
       bar.add(pulse, forKey: "pulse")
       body.addSublayer(bar)
     }
@@ -985,7 +993,7 @@ public class VideoLyricExportModule: Module {
     root.addSublayer(titleLayer)
   }
 
-  private func addMusicLayer(to root: CALayer, title: String, box: CGFloat) {
+  private func addMusicLayer(to root: CALayer, title: String, box: CGFloat, videoDuration: Double) {
     let ringSize = box * (120.0 / 128.0)
     let ring = CALayer()
     ring.frame = CGRect(x: (box - ringSize) / 2, y: 0, width: ringSize, height: ringSize)
@@ -1022,9 +1030,8 @@ public class VideoLyricExportModule: Module {
       let pulseAnim = CAKeyframeAnimation(keyPath: "transform.scale.y")
       pulseAnim.values = values
       pulseAnim.keyTimes = keyTimes
-      pulseAnim.duration = period
-      pulseAnim.repeatCount = .infinity
       pulseAnim.calculationMode = .linear
+      loopForExport(pulseAnim, cycle: period, videoDuration: videoDuration)
       spike.add(pulseAnim, forKey: "pulse")
       holder.addSublayer(spike)
       ring.addSublayer(holder)
